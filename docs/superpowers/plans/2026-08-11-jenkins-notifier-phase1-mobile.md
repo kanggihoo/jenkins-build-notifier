@@ -201,7 +201,7 @@ npx expo install expo-notifications expo-clipboard
 
 빠뜨리면 Task 2에서 20분짜리 빌드를 다시 돌려야 한다. EAS 무료 티어에는 월 빌드 횟수 제한도 있다.
 
-- [ ] **Step 5-3: Android FCM 자격증명 설정**
+- [X] **Step 5-3: Android FCM 자격증명 설정**
 
 **이 단계를 빠뜨리면 토큰은 정상 발급되는데 알림만 오지 않는다.** 원인을 찾기 가장 어려운 유형의 실패이므로 빌드 전에 끝낸다.
 
@@ -262,7 +262,7 @@ eas credentials
 
 `google-services.json`은 APK에 포함되어야 하므로 이 설정 후에는 반드시 다시 빌드한다.
 
-- [ ] **Step 6: Development Build 실행**
+- [X] **Step 6: Development Build 실행**
 
 ```bash
 eas build --profile development --platform android
@@ -270,11 +270,11 @@ eas build --profile development --platform android
 
 클라우드에서 15~20분 걸린다. **이 시간 동안 Task 5(타입과 mock 데이터)를 병행해도 된다.** Task 2·3은 이 빌드가 있어야 하므로 진행할 수 없다.
 
-- [ ] **Step 7: 폰에 설치**
+- [X] **Step 7: 폰에 설치**
 
 빌드가 끝나면 터미널에 링크와 QR이 나온다. 폰으로 열어 APK를 받아 설치한다. "출처를 알 수 없는 앱" 경고가 뜨면 허용한다.
 
-- [ ] **Step 8: 🚩 검증 — 폰에서 개발 서버에 연결**
+- [X] **Step 8: 🚩 검증 — 폰에서 개발 서버에 연결**
 
 ```bash
 npx expo start --dev-client
@@ -384,17 +384,6 @@ type PushRegistration =
   | { ok: true; token: string }
   | { ok: false; reason: "not-device" | "denied" | "error"; message: string }
 ```
-
-- [ ] **Step 1: 푸시 패키지 설치**
-
-Task 1 Step 5-2에서 `expo-notifications`와 `expo-clipboard`를 이미 설치했다면 건너뛴다. 설치를 빠뜨렸다면 지금 설치하고 **development build를 다시 만들어야 한다** (Task 1 Step 6 재실행) — 둘 다 네이티브 모듈이기 때문이다.
-
-```bash
-cd C:/Users/SSAFY/Desktop/notification/mobile
-npx expo install expo-notifications expo-clipboard
-```
-
-`expo-device`와 `expo-constants`는 템플릿에 이미 포함되어 있으므로 설치할 필요가 없다.
 
 - [ ] **Step 2: `src/lib/push.ts` 작성**
 
@@ -622,7 +611,6 @@ import * as Notifications from "expo-notifications"
  */
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldShowBanner: true,
     shouldShowList: true,
     shouldPlaySound: true,
@@ -652,7 +640,10 @@ export default function RootLayout() {
 }
 ```
 
-`shouldShowAlert`는 구버전, `shouldShowBanner`/`shouldShowList`는 신버전 필드명이다. 둘 다 넣어두면 SDK 버전과 무관하게 동작한다. 타입 에러가 나면 사용 중인 SDK가 인식하는 쪽만 남긴다.
+SDK 57의 `NotificationBehavior`가 받는 필드는 `shouldPlaySound`, `shouldSetBadge`, `shouldShowBanner`, `shouldShowList`, `priority`뿐이다. 구버전의 `shouldShowAlert`는 존재하지 않으므로 넣으면 타입 에러가 난다.
+
+- `shouldShowBanner` — 화면 상단에 배너로 띄울지
+- `shouldShowList` — 알림 목록(알림창)에 남길지
 
 - [ ] **Step 3: 🚩 검증 — 앱 종료 상태에서 알림 탭**
 
@@ -1064,7 +1055,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
     shouldShowBanner: true,
     shouldShowList: true,
     shouldPlaySound: true,
