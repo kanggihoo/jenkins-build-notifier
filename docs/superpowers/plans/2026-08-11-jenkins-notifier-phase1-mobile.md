@@ -1,0 +1,1245 @@
+# Jenkins 빌드 알림 앱 — Phase 1 (모바일) 구현 계획
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Jenkins 빌드 결과를 푸시 알림으로 받고 이력을 조회하는 React Native 앱을, 백엔드 없이 mock 데이터로 완성한다.
+
+**Architecture:** Expo Router 기반 2화면 앱. 모든 데이터 접근은 `lib/api.ts` 뒤에 숨겨 `USE_MOCK` 플래그 하나로 mock/실서버를 전환한다. 푸시 수신 검증을 최우선으로 배치해, 가장 불확실한 부분을 UI 작업 전에 끝낸다.
+
+**Tech Stack:** TypeScript, Expo, Expo Router, NativeWind, react-native-reusables, TanStack Query, expo-notifications, date-fns
+
+## Global Constraints
+
+- **패키지 매니저는 npm 고정.** pnpm/yarn/bun 사용 금지. Metro의 네이티브 모듈 해석 문제를 회피하기 위한 결정이다.
+- **Expo 패키지 설치는 `npm install`이 아니라 `npx expo install`을 쓴다.** Expo SDK 버전에 맞는 호환 버전을 골라준다. Expo가 관리하지 않는 순수 JS 패키지(`@tanstack/react-query`, `date-fns`)만 `npm install`을 쓴다.
+- **Expo Go로 테스트하지 않는다.** 원격 푸시가 동작하지 않는다. 반드시 Development Build를 실기기에 설치해 검증한다.
+- **에뮬레이터로 푸시를 테스트하지 않는다.** 실기기가 필요하다.
+- **로컬 저장소(AsyncStorage/MMKV/SQLite)를 도입하지 않는다.** 앱 실행마다 토큰을 재발급해 서버에 재등록한다.
+- **전역 상태관리 라이브러리를 도입하지 않는다.** 서버 상태는 TanStack Query, 나머지는 `useState`.
+- **경로 별칭은 `~/`로 통일한다.** react-native-reusables가 생성하는 컴포넌트가 `~/`를 사용하기 때문이다.
+- **자동화 테스트를 작성하지 않는다.** 스펙의 결정이다 (`## 테스트` 절 참조). 각 태스크는 테스트 코드 대신 **명시적 수동 검증 단계**로 끝난다. 검증 단계를 건너뛰지 말 것.
+
+---
+
+## 파일 구조
+
+```
+app/
+  _layout.tsx          Provider 구성, 알림 핸들러/리스너 등록, 전역 CSS 로드
+  index.tsx            빌드 목록 화면
+  build/[id].tsx       빌드 상세 화면
+components/
+  StatusBadge.tsx      빌드 상태 배지 (순수 표현)
+  BuildCard.tsx        목록 한 줄 (순수 표현)
+  ui/                  react-native-reusables가 복사해 넣는 컴포넌트
+lib/
+  types.ts             Build, BuildStatus 타입
+  mock.ts              mock 빌드 데이터
+  api.ts               데이터 접근 단일 창구 (mock/실서버 분기)
+  push.ts              권한, 채널, 토큰 발급
+  format.ts            시간·소요시간 포맷
+global.css             Tailwind 지시자
+tailwind.config.js
+metro.config.js
+babel.config.js
+```
+
+책임 분리 원칙: `app/`의 화면은 데이터 출처를 모른다. `lib/api.ts`만이 mock 여부를 안다. `components/`는 props만 받는 순수 표현 컴포넌트로, 데이터 페칭을 하지 않는다.
+
+---
+
+## Task 1: 프로젝트 생성과 Development Build 설치
+
+가장 오래 걸리고(클라우드 빌드 15~20분) 가장 잘 막히는 단계다. 다른 작업을 시작하기 전에 반드시 끝낸다.
+
+**Files:**
+- Create: 프로젝트 전체 (`create-expo-app`이 생성)
+- Modify: `package.json` (스크립트 확인)
+
+**Interfaces:**
+- Consumes: 없음
+- Produces: 폰에 설치된 development build APK, `app.json`의 `extra.eas.projectId`
+
+- [ ] **Step 1: 프로젝트 생성**
+
+```bash
+cd C:/Users/SSAFY/Desktop/notification
+npx create-expo-app@latest app
+cd app
+```
+
+기본 템플릿에 TypeScript와 Expo Router가 포함되어 있다. 별도 옵션 불필요.
+
+- [ ] **Step 2: 개발 서버가 뜨는지 확인**
+
+```bash
+npx expo start
+```
+
+터미널에 QR 코드가 나오면 성공. `Ctrl+C`로 종료한다. 아직 폰에 설치할 앱이 없으므로 QR을 스캔하지 않는다.
+
+- [ ] **Step 3: EAS CLI 설치와 로그인**
+
+```bash
+npm install -g eas-cli
+eas login
+```
+
+Expo 계정이 없으면 https://expo.dev 에서 가입한다. 무료다.
+
+- [ ] **Step 4: EAS 프로젝트 등록**
+
+```bash
+eas init
+```
+
+`app.json`에 `extra.eas.projectId`가 추가된다. **이 값이 없으면 푸시 토큰을 발급받을 수 없다.** 파일을 열어 값이 들어갔는지 눈으로 확인한다.
+
+- [ ] **Step 5: dev client 설치와 빌드 프로필 생성**
+
+```bash
+npx expo install expo-dev-client
+eas build:configure
+```
+
+`eas.json`이 생성된다. `development` 프로필에 `"developmentClient": true`와 `"distribution": "internal"`이 있는지 확인한다. 없으면 추가한다.
+
+- [ ] **Step 6: Development Build 실행**
+
+```bash
+eas build --profile development --platform android
+```
+
+클라우드에서 15~20분 걸린다. **이 시간 동안 Task 5(타입과 mock 데이터)를 병행해도 된다.** Task 2·3은 이 빌드가 있어야 하므로 진행할 수 없다.
+
+- [ ] **Step 7: 폰에 설치**
+
+빌드가 끝나면 터미널에 링크와 QR이 나온다. 폰으로 열어 APK를 받아 설치한다. "출처를 알 수 없는 앱" 경고가 뜨면 허용한다.
+
+- [ ] **Step 8: 🚩 검증 — 폰에서 개발 서버에 연결**
+
+```bash
+npx expo start --dev-client
+```
+
+폰에서 설치한 앱을 열고 QR을 스캔하거나 URL을 입력한다. Expo 기본 화면이 폰에 뜨면 성공이다.
+
+`app/index.tsx`의 텍스트를 아무거나 바꿔 저장했을 때 폰 화면이 즉시 바뀌는지 확인한다. 바뀌면 개발 루프가 완성된 것이다.
+
+- [ ] **Step 9: 삼성 기기라면 배터리 최적화 해제**
+
+`설정 > 배터리 > 백그라운드 사용 제한 > 절전 앱`에서 이 앱이 있으면 제거한다. 없어도 며칠 뒤 자동 추가될 수 있으므로, 알림이 안 오면 여기를 먼저 확인한다.
+
+- [ ] **Step 10: 커밋**
+
+```bash
+cd C:/Users/SSAFY/Desktop/notification
+git add -A
+git commit -m "feat: Expo 프로젝트 생성 및 development build 설정"
+```
+
+---
+
+## Task 2: 푸시 토큰 발급과 수신 검증
+
+**이 프로젝트의 핵심 관문이다.** 여기가 통과하면 나머지는 평범한 UI 작업이다.
+
+**Files:**
+- Create: `lib/push.ts`
+- Modify: `app/index.tsx` (임시 검증 화면)
+
+**Interfaces:**
+- Consumes: Task 1의 `extra.eas.projectId`
+- Produces: `registerForPushNotifications(): Promise<PushRegistration>` — `lib/push.ts`에서 export
+
+```ts
+type PushRegistration =
+  | { ok: true; token: string }
+  | { ok: false; reason: "not-device" | "denied" | "error"; message: string }
+```
+
+- [ ] **Step 1: 푸시 패키지 설치**
+
+```bash
+cd C:/Users/SSAFY/Desktop/notification/app
+npx expo install expo-notifications expo-device expo-constants
+```
+
+- [ ] **Step 2: `lib/push.ts` 작성**
+
+```ts
+import * as Notifications from "expo-notifications"
+import * as Device from "expo-device"
+import Constants from "expo-constants"
+import { Platform } from "react-native"
+
+export type PushRegistration =
+  | { ok: true; token: string }
+  | { ok: false; reason: "not-device" | "denied" | "error"; message: string }
+
+/**
+ * Android 8.0+ 에서는 알림이 반드시 채널에 속해야 한다.
+ * 채널이 없으면 알림이 무시되거나 소리 없이 상태바에만 들어간다.
+ * importance MAX 여야 화면 상단에 팝업(heads-up)으로 뜬다.
+ */
+async function ensureChannel(): Promise<void> {
+  if (Platform.OS !== "android") return
+  await Notifications.setNotificationChannelAsync("builds", {
+    name: "빌드 결과",
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+  })
+}
+
+export async function registerForPushNotifications(): Promise<PushRegistration> {
+  if (!Device.isDevice) {
+    return {
+      ok: false,
+      reason: "not-device",
+      message: "푸시 알림은 실기기에서만 동작합니다. 에뮬레이터에서는 사용할 수 없습니다.",
+    }
+  }
+
+  await ensureChannel()
+
+  const existing = await Notifications.getPermissionsAsync()
+  let granted = existing.granted
+  if (!granted) {
+    const requested = await Notifications.requestPermissionsAsync()
+    granted = requested.granted
+  }
+  if (!granted) {
+    return {
+      ok: false,
+      reason: "denied",
+      message: "알림 권한이 거부되었습니다. 설정에서 알림을 허용해주세요.",
+    }
+  }
+
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId
+  if (!projectId) {
+    return {
+      ok: false,
+      reason: "error",
+      message: "EAS projectId가 없습니다. `eas init`을 실행했는지 확인하세요.",
+    }
+  }
+
+  try {
+    const result = await Notifications.getExpoPushTokenAsync({ projectId })
+    return { ok: true, token: result.data }
+  } catch (e) {
+    return {
+      ok: false,
+      reason: "error",
+      message: `토큰 발급 실패: ${String(e)}`,
+    }
+  }
+}
+```
+
+- [ ] **Step 3: 임시 검증 화면 작성**
+
+`app/index.tsx`를 통째로 교체한다. 이 화면은 Task 6에서 목록 화면으로 대체된다.
+
+```tsx
+import { useEffect, useState } from "react"
+import { Button, Pressable, ScrollView, Text, View } from "react-native"
+import * as Clipboard from "expo-clipboard"
+import { registerForPushNotifications, type PushRegistration } from "../lib/push"
+
+export default function Index() {
+  const [reg, setReg] = useState<PushRegistration | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  async function run() {
+    setReg(null)
+    setReg(await registerForPushNotifications())
+  }
+
+  useEffect(() => {
+    run()
+  }, [])
+
+  return (
+    <ScrollView contentContainerStyle={{ padding: 24, gap: 16 }}>
+      <Text style={{ fontSize: 20, fontWeight: "700" }}>푸시 토큰</Text>
+
+      {reg === null && <Text>발급 중...</Text>}
+
+      {reg?.ok === false && (
+        <View style={{ gap: 12 }}>
+          <Text style={{ color: "#b91c1c" }}>{reg.message}</Text>
+          <Button title="다시 시도" onPress={run} />
+        </View>
+      )}
+
+      {reg?.ok === true && (
+        <View style={{ gap: 12 }}>
+          <Pressable
+            onPress={async () => {
+              await Clipboard.setStringAsync(reg.token)
+              setCopied(true)
+            }}
+            style={{ backgroundColor: "#f3f4f6", padding: 12, borderRadius: 8 }}
+          >
+            <Text selectable style={{ fontFamily: "monospace" }}>
+              {reg.token}
+            </Text>
+          </Pressable>
+          <Text style={{ color: "#6b7280" }}>
+            {copied ? "복사됨" : "탭하면 복사됩니다"}
+          </Text>
+        </View>
+      )}
+    </ScrollView>
+  )
+}
+```
+
+- [ ] **Step 4: 클립보드 패키지 설치**
+
+```bash
+npx expo install expo-clipboard
+```
+
+- [ ] **Step 5: 앱 실행하고 토큰 확인**
+
+```bash
+npx expo start --dev-client
+```
+
+폰에서 앱을 열면 알림 권한 요청 팝업이 뜬다. **허용**을 누른다.
+
+`ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]` 형태의 문자열이 화면에 나와야 한다. 탭해서 복사한다.
+
+**여기서 실패하면 다음을 순서대로 확인한다:**
+- "실기기에서만" 메시지 → 에뮬레이터로 실행 중이다. 실기기를 쓴다.
+- "EAS projectId가 없습니다" → `app.json`에 `extra.eas.projectId`가 있는지 확인. 없으면 `eas init` 재실행.
+- 권한 팝업이 안 뜸 → 이미 거부한 상태다. 폰 설정에서 앱 알림을 켜고 재실행.
+
+- [ ] **Step 6: 🚩 검증 — 앱을 완전히 종료한 상태에서 알림 수신**
+
+이것이 이 프로젝트 전체에서 가장 중요한 검증이다.
+
+1. 폰에서 앱을 **완전히 종료**한다 (최근 앱 목록에서 스와이프로 닫기)
+2. PC 브라우저에서 https://expo.dev/notifications 를 연다
+3. `Expo push token` 칸에 복사한 토큰을 붙여넣는다
+4. Title: `✅ my-service #42`, Body: `main · 2m 13s`
+5. `Data (JSON)` 칸에 `{"buildId":"my-service#42"}` 입력
+6. **Android 항목의 `Channel ID`에 `builds` 입력** — 비워두면 알림이 조용히 사라질 수 있다
+7. Send 클릭
+
+**폰 알림창에 알림이 떠야 한다.** 앱이 꺼져 있어도 뜬다.
+
+**안 뜨면 확인 순서:**
+- 채널 ID를 `builds`로 넣었는가
+- 폰 설정에서 앱 알림이 켜져 있는가
+- 삼성이면 배터리 최적화에서 제외했는가 (Task 1 Step 9)
+- 폰이 절전 모드가 아닌가
+
+- [ ] **Step 7: 커밋**
+
+```bash
+cd C:/Users/SSAFY/Desktop/notification
+git add -A
+git commit -m "feat: 푸시 권한 요청 및 토큰 발급 구현"
+```
+
+---
+
+## Task 3: 알림 핸들러와 탭 라우팅
+
+알림을 탭하면 해당 빌드 상세로 이동시키는 배선. 상세 화면은 아직 없으므로 임시 화면을 만든다.
+
+**Files:**
+- Create: `app/build/[id].tsx` (임시)
+- Modify: `app/_layout.tsx`
+
+**Interfaces:**
+- Consumes: Task 2의 알림 채널
+- Produces: `data.buildId`가 담긴 알림을 탭하면 `/build/<id>`로 이동하는 동작
+
+- [ ] **Step 1: 임시 상세 화면 생성**
+
+```tsx
+// app/build/[id].tsx
+import { useLocalSearchParams } from "expo-router"
+import { Text, View } from "react-native"
+
+export default function BuildDetail() {
+  const { id } = useLocalSearchParams<{ id: string }>()
+  return (
+    <View style={{ padding: 24 }}>
+      <Text style={{ fontSize: 18, fontWeight: "700" }}>상세 화면</Text>
+      <Text selectable>buildId: {id}</Text>
+    </View>
+  )
+}
+```
+
+- [ ] **Step 2: `app/_layout.tsx` 작성**
+
+```tsx
+import { useEffect } from "react"
+import { Stack, router } from "expo-router"
+import * as Notifications from "expo-notifications"
+
+/**
+ * 앱이 화면에 떠 있을 때 알림은 기본적으로 표시되지 않는다.
+ * 개발 중 "알림이 안 온다"는 오진을 막기 위해 포그라운드에서도 표시한다.
+ */
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+})
+
+export default function RootLayout() {
+  // useLastNotificationResponse는 앱이 종료된 상태에서 알림을 탭해
+  // 콜드 스타트한 경우도 포함해 마지막 응답을 돌려준다.
+  const response = Notifications.useLastNotificationResponse()
+
+  useEffect(() => {
+    const data = response?.notification.request.content.data
+    const buildId = data?.buildId
+    if (typeof buildId === "string" && buildId.length > 0) {
+      router.push(`/build/${encodeURIComponent(buildId)}`)
+    }
+  }, [response])
+
+  return (
+    <Stack>
+      <Stack.Screen name="index" options={{ title: "빌드" }} />
+      <Stack.Screen name="build/[id]" options={{ title: "빌드 상세" }} />
+    </Stack>
+  )
+}
+```
+
+`shouldShowAlert`는 구버전, `shouldShowBanner`/`shouldShowList`는 신버전 필드명이다. 둘 다 넣어두면 SDK 버전과 무관하게 동작한다. 타입 에러가 나면 사용 중인 SDK가 인식하는 쪽만 남긴다.
+
+- [ ] **Step 3: 🚩 검증 — 앱 종료 상태에서 알림 탭**
+
+1. 앱을 완전히 종료한다
+2. expo.dev/notifications에서 `Data (JSON)`에 `{"buildId":"my-service#42"}`, `Channel ID`에 `builds`를 넣고 발송한다
+3. 알림을 **탭**한다
+
+앱이 실행되면서 상세 화면이 열리고 `buildId: my-service#42`가 표시되어야 한다.
+
+**`#` 때문에 라우팅이 깨지면** (상세 화면이 안 열리거나 id가 잘림): `app/build/[id].tsx` 대신 쿼리 파라미터 방식으로 전환한다. `router.push({ pathname: "/build", params: { id: buildId } })`로 바꾸고 파일을 `app/build.tsx`로 옮긴다. 이 경우 이후 태스크의 경로도 함께 맞춘다.
+
+- [ ] **Step 4: 🚩 검증 — 앱이 켜져 있을 때도 알림 표시**
+
+앱을 열어둔 상태로 다시 발송한다. 화면 상단에 알림 배너가 떠야 한다. 안 뜨면 `setNotificationHandler`의 필드명이 SDK와 안 맞는 것이다.
+
+- [ ] **Step 5: 커밋**
+
+```bash
+cd C:/Users/SSAFY/Desktop/notification
+git add -A
+git commit -m "feat: 알림 포그라운드 표시 및 탭 라우팅 구현"
+```
+
+---
+
+## Task 4: NativeWind와 react-native-reusables 설정
+
+**Files:**
+- Create: `global.css`, `tailwind.config.js`, `nativewind-env.d.ts`
+- Modify: `metro.config.js`, `babel.config.js`, `tsconfig.json`, `app/_layout.tsx`
+
+**Interfaces:**
+- Consumes: 없음
+- Produces: 모든 컴포넌트에서 `className="..."` 사용 가능, `~/` 경로 별칭
+
+- [ ] **Step 1: react-native-reusables CLI로 초기화 시도**
+
+```bash
+cd C:/Users/SSAFY/Desktop/notification/app
+npx @react-native-reusables/cli@latest init
+```
+
+이 CLI가 NativeWind 설정을 대신 해주는 경우가 많다. **CLI가 설정을 마쳤다면 Step 2~6을 건너뛰고 Step 7로 간다.** CLI가 없거나 실패하면 Step 2부터 수동으로 진행한다.
+
+NativeWind 설정 파일 형식은 버전마다 바뀐다. 아래는 검증용 체크리스트로 쓰고, 충돌이 나면 https://www.nativewind.dev/docs/getting-started/installation 의 현재 문서를 우선한다.
+
+- [ ] **Step 2: 패키지 설치**
+
+```bash
+npx expo install nativewind tailwindcss react-native-reanimated react-native-safe-area-context
+```
+
+- [ ] **Step 3: `tailwind.config.js` 생성**
+
+```js
+/** @type {import('tailwindcss').Config} */
+module.exports = {
+  content: ["./app/**/*.{js,jsx,ts,tsx}", "./components/**/*.{js,jsx,ts,tsx}"],
+  presets: [require("nativewind/preset")],
+  theme: { extend: {} },
+  plugins: [],
+}
+```
+
+- [ ] **Step 4: `global.css` 생성**
+
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
+
+- [ ] **Step 5: `babel.config.js`와 `metro.config.js` 수정**
+
+```js
+// babel.config.js
+module.exports = function (api) {
+  api.cache(true)
+  return {
+    presets: [
+      ["babel-preset-expo", { jsxImportSource: "nativewind" }],
+      "nativewind/babel",
+    ],
+  }
+}
+```
+
+```js
+// metro.config.js
+const { getDefaultConfig } = require("expo/metro-config")
+const { withNativeWind } = require("nativewind/metro")
+
+const config = getDefaultConfig(__dirname)
+
+module.exports = withNativeWind(config, { input: "./global.css" })
+```
+
+- [ ] **Step 6: 타입 선언과 CSS 로드**
+
+```ts
+// nativewind-env.d.ts
+/// <reference types="nativewind/types" />
+```
+
+`app/_layout.tsx` 최상단에 추가:
+
+```tsx
+import "../global.css"
+```
+
+- [ ] **Step 7: `tsconfig.json`에 `~/` 별칭 추가**
+
+```json
+{
+  "compilerOptions": {
+    "paths": {
+      "~/*": ["./*"]
+    }
+  }
+}
+```
+
+기존 `"@/*"` 항목이 있어도 지우지 않고 `~/*`를 함께 둔다.
+
+- [ ] **Step 8: 🚩 검증 — Tailwind 클래스가 먹는지 확인**
+
+`app/build/[id].tsx`의 바깥 `View`를 임시로 바꾼다:
+
+```tsx
+<View className="flex-1 items-center justify-center bg-blue-500">
+```
+
+캐시를 비우고 재시작한다:
+
+```bash
+npx expo start --dev-client --clear
+```
+
+상세 화면 배경이 파란색이 되고 내용이 가운데 정렬되면 성공이다. **안 되면 다음 태스크로 넘어가지 말 것** — 이후 모든 UI가 이 설정에 의존한다.
+
+확인 후 임시 `className`은 되돌린다.
+
+- [ ] **Step 9: UI 컴포넌트 추가**
+
+```bash
+npx @react-native-reusables/cli@latest add text button card
+```
+
+`components/ui/` 아래에 파일이 생성된다. CLI가 다른 이름을 요구하면 `npx @react-native-reusables/cli@latest add` 를 인자 없이 실행해 사용 가능한 목록을 확인한다.
+
+- [ ] **Step 10: 커밋**
+
+```bash
+cd C:/Users/SSAFY/Desktop/notification
+git add -A
+git commit -m "chore: NativeWind 및 react-native-reusables 설정"
+```
+
+---
+
+## Task 5: 타입, mock 데이터, API 계층
+
+Task 1의 클라우드 빌드를 기다리는 동안 병행 가능한 유일한 태스크다.
+
+**Files:**
+- Create: `lib/types.ts`, `lib/mock.ts`, `lib/api.ts`, `lib/format.ts`
+
+**Interfaces:**
+- Consumes: 없음
+- Produces:
+  - `lib/types.ts`: `type BuildStatus`, `type Build`
+  - `lib/api.ts`: `fetchBuilds(limit?: number): Promise<Build[]>`, `fetchBuild(id: string): Promise<Build>`, `registerDevice(expoPushToken: string): Promise<void>`
+  - `lib/format.ts`: `formatDuration(ms: number): string`, `formatRelative(iso: string): string`
+
+- [ ] **Step 1: `lib/types.ts` 작성**
+
+```ts
+export type BuildStatus = "SUCCESS" | "FAILURE" | "ABORTED" | "UNSTABLE"
+
+export type Build = {
+  id: string // "my-service#42"
+  job: string // "my-service"
+  number: number // 42
+  status: BuildStatus
+  branch: string // "main"
+  commit: string // short sha
+  message: string // 커밋 메시지
+  durationMs: number
+  finishedAt: string // ISO8601
+  url: string // Jenkins 빌드 페이지 링크
+}
+```
+
+- [ ] **Step 2: `lib/mock.ts` 작성**
+
+네 가지 상태가 모두 포함되도록 구성한다. UI가 모든 분기를 실제로 렌더링해봐야 하기 때문이다.
+
+```ts
+import type { Build } from "./types"
+
+export const MOCK_BUILDS: Build[] = [
+  {
+    id: "my-service#42",
+    job: "my-service",
+    number: 42,
+    status: "SUCCESS",
+    branch: "main",
+    commit: "a1b2c3d",
+    message: "fix: 로그인 리다이렉트 경로 수정",
+    durationMs: 133_000,
+    finishedAt: "2026-08-11T09:12:00.000Z",
+    url: "https://jenkins.example.com/job/my-service/42/",
+  },
+  {
+    id: "my-service#41",
+    job: "my-service",
+    number: 41,
+    status: "FAILURE",
+    branch: "feature/payment",
+    commit: "9f8e7d6",
+    message: "feat: 결제 취소 API 추가",
+    durationMs: 47_000,
+    finishedAt: "2026-08-11T08:40:00.000Z",
+    url: "https://jenkins.example.com/job/my-service/41/",
+  },
+  {
+    id: "batch-worker#17",
+    job: "batch-worker",
+    number: 17,
+    status: "UNSTABLE",
+    branch: "main",
+    commit: "5c4b3a2",
+    message: "chore: 재시도 횟수 조정",
+    durationMs: 302_000,
+    finishedAt: "2026-08-11T07:05:00.000Z",
+    url: "https://jenkins.example.com/job/batch-worker/17/",
+  },
+  {
+    id: "my-service#40",
+    job: "my-service",
+    number: 40,
+    status: "ABORTED",
+    branch: "feature/payment",
+    commit: "1a2b3c4",
+    message: "wip: 결제 모듈 리팩터링",
+    durationMs: 12_000,
+    finishedAt: "2026-08-10T22:31:00.000Z",
+    url: "https://jenkins.example.com/job/my-service/40/",
+  },
+]
+```
+
+- [ ] **Step 3: `lib/api.ts` 작성**
+
+**이 파일만이 mock 여부를 안다.** 화면은 절대 `MOCK_BUILDS`를 직접 import하지 않는다.
+
+```ts
+import type { Build } from "./types"
+import { MOCK_BUILDS } from "./mock"
+
+/** Phase 2에서 백엔드를 붙일 때 false로 바꾼다. */
+const USE_MOCK = true
+
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? ""
+
+/** mock 모드에서 로딩 상태 UI를 확인할 수 있도록 지연을 준다. */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function get<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`)
+  if (!res.ok) throw new Error(`GET ${path} 실패 (${res.status})`)
+  return (await res.json()) as T
+}
+
+export async function fetchBuilds(limit = 30): Promise<Build[]> {
+  if (USE_MOCK) {
+    await delay(400)
+    return MOCK_BUILDS.slice(0, limit)
+  }
+  const data = await get<{ builds: Build[] }>(`/api/builds?limit=${limit}`)
+  return data.builds
+}
+
+export async function fetchBuild(id: string): Promise<Build> {
+  if (USE_MOCK) {
+    await delay(200)
+    const found = MOCK_BUILDS.find((b) => b.id === id)
+    if (!found) throw new Error(`빌드를 찾을 수 없습니다: ${id}`)
+    return found
+  }
+  return get<Build>(`/api/builds/${encodeURIComponent(id)}`)
+}
+
+export async function registerDevice(expoPushToken: string): Promise<void> {
+  if (USE_MOCK) {
+    console.log("[mock] registerDevice", expoPushToken)
+    return
+  }
+  const res = await fetch(`${BASE_URL}/api/devices`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ expoPushToken }),
+  })
+  if (!res.ok) throw new Error(`디바이스 등록 실패 (${res.status})`)
+}
+```
+
+- [ ] **Step 4: `lib/format.ts` 작성**
+
+```ts
+import { formatDistanceToNow } from "date-fns"
+import { ko } from "date-fns/locale"
+
+export function formatDuration(ms: number): string {
+  const total = Math.round(ms / 1000)
+  const minutes = Math.floor(total / 60)
+  const seconds = total % 60
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`
+}
+
+export function formatRelative(iso: string): string {
+  return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ko })
+}
+```
+
+- [ ] **Step 5: date-fns 설치**
+
+```bash
+cd C:/Users/SSAFY/Desktop/notification/app
+npm install date-fns
+```
+
+Expo가 관리하는 패키지가 아니므로 `npm install`을 쓴다.
+
+- [ ] **Step 6: 🚩 검증 — 타입 체크 통과**
+
+```bash
+npx tsc --noEmit
+```
+
+에러가 없어야 한다.
+
+- [ ] **Step 7: 커밋**
+
+```bash
+cd C:/Users/SSAFY/Desktop/notification
+git add -A
+git commit -m "feat: Build 타입, mock 데이터, API 계층 추가"
+```
+
+---
+
+## Task 6: 빌드 목록 화면
+
+**Files:**
+- Create: `components/StatusBadge.tsx`, `components/BuildCard.tsx`
+- Modify: `app/index.tsx`, `app/_layout.tsx`
+
+**Interfaces:**
+- Consumes: `fetchBuilds`, `registerDevice` (Task 5), `formatDuration`, `formatRelative` (Task 5), `registerForPushNotifications` (Task 2)
+- Produces: `StatusBadge({ status: BuildStatus })`, `BuildCard({ build: Build, onPress: () => void })`
+
+- [ ] **Step 1: TanStack Query 설치**
+
+```bash
+cd C:/Users/SSAFY/Desktop/notification/app
+npm install @tanstack/react-query
+```
+
+- [ ] **Step 2: `app/_layout.tsx`에 QueryClientProvider 추가**
+
+Task 3에서 만든 파일에 Provider를 감싼다. 기존 알림 관련 코드는 그대로 둔다.
+
+```tsx
+import "../global.css"
+import { useEffect, useState } from "react"
+import { Stack, router } from "expo-router"
+import * as Notifications from "expo-notifications"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+})
+
+export default function RootLayout() {
+  const [queryClient] = useState(() => new QueryClient())
+  const response = Notifications.useLastNotificationResponse()
+
+  useEffect(() => {
+    const buildId = response?.notification.request.content.data?.buildId
+    if (typeof buildId === "string" && buildId.length > 0) {
+      router.push(`/build/${encodeURIComponent(buildId)}`)
+    }
+  }, [response])
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <Stack>
+        <Stack.Screen name="index" options={{ title: "빌드" }} />
+        <Stack.Screen name="build/[id]" options={{ title: "빌드 상세" }} />
+      </Stack>
+    </QueryClientProvider>
+  )
+}
+```
+
+- [ ] **Step 3: `components/StatusBadge.tsx` 작성**
+
+```tsx
+import { Text, View } from "react-native"
+import type { BuildStatus } from "~/lib/types"
+
+const STYLE: Record<BuildStatus, { box: string; text: string; label: string }> = {
+  SUCCESS: { box: "bg-green-100", text: "text-green-800", label: "성공" },
+  FAILURE: { box: "bg-red-100", text: "text-red-800", label: "실패" },
+  ABORTED: { box: "bg-gray-200", text: "text-gray-700", label: "중단" },
+  UNSTABLE: { box: "bg-yellow-100", text: "text-yellow-800", label: "불안정" },
+}
+
+export function StatusBadge({ status }: { status: BuildStatus }) {
+  const s = STYLE[status]
+  return (
+    <View className={`rounded-full px-2 py-0.5 ${s.box}`}>
+      <Text className={`text-xs font-semibold ${s.text}`}>{s.label}</Text>
+    </View>
+  )
+}
+```
+
+- [ ] **Step 4: `components/BuildCard.tsx` 작성**
+
+데이터를 가져오지 않는 순수 표현 컴포넌트다. props만 받는다.
+
+```tsx
+import { Pressable, Text, View } from "react-native"
+import type { Build } from "~/lib/types"
+import { formatDuration, formatRelative } from "~/lib/format"
+import { StatusBadge } from "./StatusBadge"
+
+export function BuildCard({
+  build,
+  onPress,
+}: {
+  build: Build
+  onPress: () => void
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      className="active:opacity-60 border-b border-gray-200 px-4 py-3"
+    >
+      <View className="flex-row items-center gap-2">
+        <StatusBadge status={build.status} />
+        <Text className="flex-1 font-semibold" numberOfLines={1}>
+          {build.job} #{build.number}
+        </Text>
+        <Text className="text-xs text-gray-500">
+          {formatRelative(build.finishedAt)}
+        </Text>
+      </View>
+      <Text className="mt-1 text-sm text-gray-700" numberOfLines={1}>
+        {build.message}
+      </Text>
+      <Text className="mt-0.5 text-xs text-gray-500">
+        {build.branch} · {build.commit} · {formatDuration(build.durationMs)}
+      </Text>
+    </Pressable>
+  )
+}
+```
+
+- [ ] **Step 5: `app/index.tsx`를 목록 화면으로 교체**
+
+Task 2의 임시 토큰 화면을 대체한다. 토큰 발급은 계속하되, 화면 상단 배너로 상태만 알린다.
+
+```tsx
+import { useEffect, useState } from "react"
+import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native"
+import { router } from "expo-router"
+import { useQuery } from "@tanstack/react-query"
+import { fetchBuilds, registerDevice } from "~/lib/api"
+import { registerForPushNotifications } from "~/lib/push"
+import { BuildCard } from "~/components/BuildCard"
+
+export default function Index() {
+  const [pushError, setPushError] = useState<string | null>(null)
+
+  // 앱 실행마다 토큰을 재발급해 서버에 재등록한다.
+  // 로컬에 "등록됨" 플래그를 캐싱하면 OS가 토큰을 갱신했을 때
+  // 재등록을 건너뛰어 알림이 조용히 끊긴다.
+  useEffect(() => {
+    ;(async () => {
+      const reg = await registerForPushNotifications()
+      if (!reg.ok) {
+        setPushError(reg.message)
+        return
+      }
+      setPushError(null)
+      try {
+        await registerDevice(reg.token)
+      } catch {
+        // 등록 실패는 앱 사용을 막지 않는다. 다음 실행에 재시도된다.
+      }
+    })()
+  }, [])
+
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
+    queryKey: ["builds"],
+    queryFn: () => fetchBuilds(30),
+  })
+
+  if (isLoading) {
+    return (
+      <View className="flex-1 items-center justify-center">
+        <ActivityIndicator />
+      </View>
+    )
+  }
+
+  if (isError) {
+    return (
+      <View className="flex-1 items-center justify-center gap-3 px-8">
+        <Text className="text-center text-red-700">
+          빌드 목록을 불러오지 못했습니다.
+        </Text>
+        <Text className="text-center text-xs text-gray-500">
+          {String(error)}
+        </Text>
+        <Pressable
+          onPress={() => refetch()}
+          className="rounded-lg bg-gray-900 px-4 py-2 active:opacity-70"
+        >
+          <Text className="font-semibold text-white">다시 시도</Text>
+        </Pressable>
+      </View>
+    )
+  }
+
+  return (
+    <View className="flex-1 bg-white">
+      {pushError && (
+        <View className="bg-amber-100 px-4 py-2">
+          <Text className="text-xs text-amber-900">{pushError}</Text>
+        </View>
+      )}
+      <FlatList
+        data={data}
+        keyExtractor={(b) => b.id}
+        renderItem={({ item }) => (
+          <BuildCard
+            build={item}
+            onPress={() => router.push(`/build/${encodeURIComponent(item.id)}`)}
+          />
+        )}
+        onRefresh={() => refetch()}
+        refreshing={isRefetching}
+        ListEmptyComponent={
+          <View className="items-center py-16">
+            <Text className="text-gray-500">빌드 기록이 없습니다.</Text>
+          </View>
+        }
+      />
+    </View>
+  )
+}
+```
+
+- [ ] **Step 6: 🚩 검증 — 목록이 뜨는지 확인**
+
+앱을 열어 다음을 모두 확인한다:
+
+- 잠깐 로딩 스피너가 보인 뒤 4개 항목이 뜬다
+- 성공/실패/중단/불안정 배지 색이 각각 다르다
+- 아래로 당기면(pull-to-refresh) 새로고침 인디케이터가 돈다
+- 항목을 탭하면 상세 화면(아직 임시)으로 이동하고 buildId가 맞다
+
+- [ ] **Step 7: 🚩 검증 — 권한 거부 시 배너**
+
+폰 설정에서 앱 알림을 끄고 앱을 재시작한다. 목록 위에 노란 배너가 뜨고, **목록 자체는 정상 동작해야 한다.** 확인 후 알림을 다시 켠다.
+
+- [ ] **Step 8: 커밋**
+
+```bash
+cd C:/Users/SSAFY/Desktop/notification
+git add -A
+git commit -m "feat: 빌드 목록 화면 구현"
+```
+
+---
+
+## Task 7: 빌드 상세 화면
+
+**Files:**
+- Modify: `app/build/[id].tsx`
+
+**Interfaces:**
+- Consumes: `fetchBuild` (Task 5), `StatusBadge` (Task 6), `formatDuration`/`formatRelative` (Task 5)
+- Produces: 없음 (최종 화면)
+
+- [ ] **Step 1: `app/build/[id].tsx`를 실제 상세 화면으로 교체**
+
+```tsx
+import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View } from "react-native"
+import { useLocalSearchParams } from "expo-router"
+import { useQuery } from "@tanstack/react-query"
+import { fetchBuild } from "~/lib/api"
+import { StatusBadge } from "~/components/StatusBadge"
+import { formatDuration, formatRelative } from "~/lib/format"
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <View className="flex-row border-b border-gray-100 py-3">
+      <Text className="w-24 text-sm text-gray-500">{label}</Text>
+      <Text className="flex-1 text-sm" selectable>
+        {value}
+      </Text>
+    </View>
+  )
+}
+
+export default function BuildDetail() {
+  const { id } = useLocalSearchParams<{ id: string }>()
+
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ["build", id],
+    queryFn: () => fetchBuild(id),
+    enabled: Boolean(id),
+  })
+
+  if (isLoading) {
+    return (
+      <View className="flex-1 items-center justify-center">
+        <ActivityIndicator />
+      </View>
+    )
+  }
+
+  if (isError || !data) {
+    return (
+      <View className="flex-1 items-center justify-center gap-3 px-8">
+        <Text className="text-center text-red-700">
+          빌드 정보를 불러오지 못했습니다.
+        </Text>
+        <Text className="text-center text-xs text-gray-500">{String(error)}</Text>
+        <Pressable
+          onPress={() => refetch()}
+          className="rounded-lg bg-gray-900 px-4 py-2 active:opacity-70"
+        >
+          <Text className="font-semibold text-white">다시 시도</Text>
+        </Pressable>
+      </View>
+    )
+  }
+
+  return (
+    <ScrollView className="flex-1 bg-white" contentContainerClassName="p-4">
+      <View className="flex-row items-center gap-2">
+        <StatusBadge status={data.status} />
+        <Text className="text-lg font-bold">
+          {data.job} #{data.number}
+        </Text>
+      </View>
+
+      <Text className="mt-3 text-base">{data.message}</Text>
+
+      <View className="mt-4">
+        <Row label="브랜치" value={data.branch} />
+        <Row label="커밋" value={data.commit} />
+        <Row label="소요 시간" value={formatDuration(data.durationMs)} />
+        <Row label="완료" value={formatRelative(data.finishedAt)} />
+      </View>
+
+      <Pressable
+        onPress={() => Linking.openURL(data.url)}
+        className="mt-6 rounded-lg bg-gray-900 px-4 py-3 active:opacity-70"
+      >
+        <Text className="text-center font-semibold text-white">
+          Jenkins에서 열기
+        </Text>
+      </Pressable>
+    </ScrollView>
+  )
+}
+```
+
+- [ ] **Step 2: 🚩 검증 — 목록에서 진입**
+
+목록에서 각 항목을 하나씩 탭해 네 가지 상태가 모두 올바르게 표시되는지 확인한다. "Jenkins에서 열기"를 누르면 브라우저가 열린다 (mock URL이라 페이지는 없어도 됨).
+
+- [ ] **Step 3: 🚩 최종 검증 — 알림 → 상세 전체 경로**
+
+이것이 Phase 1의 완료 조건이다.
+
+1. 앱을 **완전히 종료**한다
+2. expo.dev/notifications에서 발송한다:
+   - Title: `❌ my-service #41`
+   - Body: `feature/payment · 47s`
+   - Data: `{"buildId":"my-service#41"}`
+   - Channel ID: `builds`
+3. 알림창에 알림이 뜬다
+4. 알림을 탭한다
+5. 앱이 실행되며 **`my-service #41` 상세 화면이 바로 열린다** (목록이 아니라 상세)
+6. 실패 배지가 빨간색으로, 브랜치가 `feature/payment`로 표시된다
+
+- [ ] **Step 4: 커밋**
+
+```bash
+cd C:/Users/SSAFY/Desktop/notification
+git add -A
+git commit -m "feat: 빌드 상세 화면 구현"
+```
+
+---
+
+## Task 8: 정리와 Phase 2 인수인계
+
+**Files:**
+- Create: `.env.example`, `README.md`
+- Modify: `lib/api.ts` (주석 보강)
+
+**Interfaces:**
+- Consumes: 전체
+- Produces: Phase 2 착수에 필요한 문서
+
+- [ ] **Step 1: `.env.example` 생성**
+
+```
+# Phase 2에서 백엔드를 붙일 때 사용한다.
+# 실제 값은 .env.local 에 넣는다 (git에 커밋하지 않는다).
+EXPO_PUBLIC_API_URL=https://your-domain.example.com
+```
+
+- [ ] **Step 2: `.gitignore` 확인**
+
+`.env.local`이 무시되는지 확인하고, 없으면 추가한다.
+
+- [ ] **Step 3: `README.md` 작성**
+
+```markdown
+# Jenkins 빌드 알림 앱
+
+Jenkins 빌드 결과를 푸시 알림으로 받고 이력을 조회하는 앱.
+
+## 현재 상태
+
+Phase 1 (모바일) 완료. 데이터는 mock이며 백엔드는 아직 없다.
+
+## 개발 실행
+
+Expo Go로는 푸시가 동작하지 않는다. Development Build가 폰에 설치되어 있어야 한다.
+
+    cd app
+    npx expo start --dev-client
+
+Development Build 재생성이 필요한 경우 (네이티브 패키지를 추가했을 때):
+
+    eas build --profile development --platform android
+
+## 푸시 수동 테스트
+
+1. 앱을 실행해 목록 화면 진입 (토큰이 자동 발급·등록됨)
+2. 토큰이 필요하면 콘솔의 `[mock] registerDevice` 로그에서 확인
+3. https://expo.dev/notifications 에서 발송
+   - Data: `{"buildId":"my-service#42"}`
+   - **Channel ID: `builds`** (누락하면 알림이 표시되지 않을 수 있음)
+
+## Phase 2 착수 방법
+
+1. `docs/superpowers/specs/2026-08-11-jenkins-build-notifier-design.md`의 API 계약대로 백엔드 구현
+2. `app/.env.local`에 `EXPO_PUBLIC_API_URL` 설정
+3. `app/lib/api.ts`의 `USE_MOCK`을 `false`로 변경
+4. Jenkins Post-build에 `POST /api/builds` 호출 추가
+
+앱 코드에서 수정할 곳은 `USE_MOCK` 한 줄뿐이다.
+
+## 알림이 안 올 때
+
+- 삼성 기기: `설정 > 배터리 > 백그라운드 사용 제한`에서 앱 제외
+- 설정에서 "강제 중지"를 눌렀다면 앱을 한 번 실행해야 푸시가 재개된다
+- 폰 알림 권한이 켜져 있는지 확인
+```
+
+- [ ] **Step 4: 🚩 검증 — 최종 타입 체크**
+
+```bash
+cd C:/Users/SSAFY/Desktop/notification/app
+npx tsc --noEmit
+```
+
+에러가 없어야 한다.
+
+- [ ] **Step 5: 커밋**
+
+```bash
+cd C:/Users/SSAFY/Desktop/notification
+git add -A
+git commit -m "docs: README 및 환경변수 예시 추가"
+```
+
+---
+
+## Phase 1 완료 조건
+
+아래가 모두 참이면 Phase 1이 끝난 것이다.
+
+- [ ] 앱이 완전히 종료된 상태에서 푸시 알림이 폰 알림창에 도착한다
+- [ ] 알림을 탭하면 해당 빌드의 상세 화면이 바로 열린다
+- [ ] 목록 화면에 4개 mock 빌드가 상태별로 구분되어 표시된다
+- [ ] pull-to-refresh가 동작한다
+- [ ] 알림 권한을 거부해도 목록 화면은 정상 동작하고 배너가 표시된다
+- [ ] `npx tsc --noEmit`이 통과한다
+- [ ] `USE_MOCK` 한 줄과 환경변수만으로 실서버 전환이 가능한 구조다
