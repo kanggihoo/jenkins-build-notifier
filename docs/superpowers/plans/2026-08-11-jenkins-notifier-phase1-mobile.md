@@ -4,9 +4,9 @@
 
 **Goal:** Jenkins 빌드 결과를 푸시 알림으로 받고 이력을 조회하는 React Native 앱을, 백엔드 없이 mock 데이터로 완성한다.
 
-**Architecture:** Expo Router 기반 2화면 앱. 모든 데이터 접근은 `lib/api.ts` 뒤에 숨겨 `USE_MOCK` 플래그 하나로 mock/실서버를 전환한다. 푸시 수신 검증을 최우선으로 배치해, 가장 불확실한 부분을 UI 작업 전에 끝낸다.
+**Architecture:** Expo Router 기반 2화면 앱. 모든 데이터 접근은 `src/lib/api.ts` 뒤에 숨겨 `USE_MOCK` 플래그 하나로 mock/실서버를 전환한다. 푸시 수신 검증을 최우선으로 배치해, 가장 불확실한 부분을 UI 작업 전에 끝낸다.
 
-**Tech Stack:** TypeScript, Expo, Expo Router, NativeWind, react-native-reusables, TanStack Query, expo-notifications, date-fns
+**Tech Stack:** TypeScript, **Expo SDK 57**, Expo Router, NativeWind, react-native-reusables, TanStack Query, expo-notifications, date-fns
 
 ## Global Constraints
 
@@ -16,7 +16,8 @@
 - **에뮬레이터로 푸시를 테스트하지 않는다.** 실기기가 필요하다.
 - **로컬 저장소(AsyncStorage/MMKV/SQLite)를 도입하지 않는다.** 앱 실행마다 토큰을 재발급해 서버에 재등록한다.
 - **전역 상태관리 라이브러리를 도입하지 않는다.** 서버 상태는 TanStack Query, 나머지는 `useState`.
-- **경로 별칭은 `~/`로 통일한다.** react-native-reusables가 생성하는 컴포넌트가 `~/`를 사용하기 때문이다.
+- **경로 별칭은 `@/`를 쓴다.** 템플릿의 `tsconfig.json`에 `"@/*": ["./src/*"]`가 이미 설정되어 있다. 별도 설정이 필요 없다. react-native-reusables가 `~/`를 쓰는 컴포넌트를 생성하면 `@/`로 고친다.
+- **소스는 모두 `src/` 아래에 있다.** 라우트는 `app/`이 아니라 **`src/app/`**이다. SDK 57 템플릿의 구조다.
 - **자동화 테스트를 작성하지 않는다.** 스펙의 결정이다 (`## 테스트` 절 참조). 각 태스크는 테스트 코드 대신 **명시적 수동 검증 단계**로 끝난다. 검증 단계를 건너뛰지 말 것.
 
 ---
@@ -39,27 +40,32 @@ Expo 프로젝트 폴더 이름은 `app`이 아니라 **`mobile`**이다. Expo R
 아래는 모두 `notification/mobile/` 기준 상대 경로다.
 
 ```
-app/
-  _layout.tsx          Provider 구성, 알림 핸들러/리스너 등록, 전역 CSS 로드
-  index.tsx            빌드 목록 화면
-  build/[id].tsx       빌드 상세 화면
-components/
-  StatusBadge.tsx      빌드 상태 배지 (순수 표현)
-  BuildCard.tsx        목록 한 줄 (순수 표현)
-  ui/                  react-native-reusables가 복사해 넣는 컴포넌트
-lib/
-  types.ts             Build, BuildStatus 타입
-  mock.ts              mock 빌드 데이터
-  api.ts               데이터 접근 단일 창구 (mock/실서버 분기)
-  push.ts              권한, 채널, 토큰 발급
-  format.ts            시간·소요시간 포맷
-global.css             Tailwind 지시자
+src/
+  app/
+    _layout.tsx        Provider 구성, 알림 핸들러/리스너 등록, 전역 CSS 로드
+    index.tsx          빌드 목록 화면
+    build/[id].tsx     빌드 상세 화면
+  components/
+    StatusBadge.tsx    빌드 상태 배지 (순수 표현)
+    BuildCard.tsx      목록 한 줄 (순수 표현)
+    ui/                react-native-reusables가 복사해 넣는 컴포넌트
+  lib/
+    types.ts           Build, BuildStatus 타입
+    mock.ts            mock 빌드 데이터
+    api.ts             데이터 접근 단일 창구 (mock/실서버 분기)
+    push.ts            권한, 채널, 토큰 발급
+    format.ts          시간·소요시간 포맷
+  global.css           Tailwind 지시자 (템플릿이 이미 생성해 둔 파일을 수정)
 tailwind.config.js
 metro.config.js
 babel.config.js
 ```
 
-책임 분리 원칙: `app/`의 화면은 데이터 출처를 모른다. `lib/api.ts`만이 mock 여부를 안다. `components/`는 props만 받는 순수 표현 컴포넌트로, 데이터 페칭을 하지 않는다.
+`@/` 별칭은 `src/`를 가리킨다. 즉 `@/lib/api`는 `src/lib/api.ts`다.
+
+템플릿이 생성한 데모 파일(`src/app/explore.tsx`, `src/components/themed-text.tsx` 등)은 Task 1에서 `npm run reset-project`로 정리한다.
+
+책임 분리 원칙: `src/app/`의 화면은 데이터 출처를 모른다. `src/lib/api.ts`만이 mock 여부를 안다. `src/components/`는 props만 받는 순수 표현 컴포넌트로, 데이터 페칭을 하지 않는다.
 
 ---
 
@@ -75,7 +81,7 @@ babel.config.js
 - Consumes: 없음
 - Produces: 폰에 설치된 development build APK, `app.json`의 `extra.eas.projectId`
 
-- [ ] **Step 1: 프로젝트 생성**
+- [x] **Step 1: 프로젝트 생성** — 완료
 
 ```bash
 cd C:/Users/SSAFY/Desktop/notification
@@ -83,57 +89,52 @@ npx create-expo-app@latest mobile
 cd mobile
 ```
 
-기본 템플릿에 TypeScript와 Expo Router가 포함되어 있다. 별도 옵션 불필요.
+생성된 것은 **Expo SDK 57** 템플릿이며 TypeScript, Expo Router, `src/` 구조를 포함한다. `expo-dev-client`, `expo-device`, `expo-constants`가 이미 의존성에 들어 있다.
 
-- [ ] **Step 1-1: 중첩 git 저장소 제거**
-
-`create-expo-app`은 생성한 폴더에서 `git init`을 실행한다. `notification/.git` 안에 `notification/mobile/.git`이 생기면 바깥 저장소가 `mobile`의 내용을 추적하지 못한다. 커밋했는데 파일이 들어가지 않는 문제로 나타난다.
-
-```bash
-ls -d C:/Users/SSAFY/Desktop/notification/mobile/.git
-```
-
-존재하면 제거한다:
-
-```bash
-rm -rf C:/Users/SSAFY/Desktop/notification/mobile/.git
-```
-
-이후 `git status`를 `notification/`에서 실행했을 때 `mobile/` 내부 파일들이 개별적으로 보여야 한다. `mobile/`만 한 줄로 나오면 아직 중첩 저장소가 남아 있는 것이다.
-
-- [ ] **Step 2: 개발 서버가 뜨는지 확인**
+- [x] **Step 2: 개발 서버가 뜨는지 확인** — 완료
 
 ```bash
 npx expo start
 ```
 
-터미널에 QR 코드가 나오면 성공. `Ctrl+C`로 종료한다. 아직 폰에 설치할 앱이 없으므로 QR을 스캔하지 않는다.
+터미널에 QR 코드가 나오면 성공. `Ctrl+C`로 종료한다.
 
-- [ ] **Step 3: EAS CLI 설치와 로그인**
+- [x] **Step 3: EAS CLI 설치와 로그인** — 완료
 
 ```bash
 npm install -g eas-cli
 eas login
 ```
 
-Expo 계정이 없으면 https://expo.dev 에서 가입한다. 무료다.
-
-- [ ] **Step 4: EAS 프로젝트 등록**
+- [x] **Step 4: EAS 프로젝트 등록** — 완료
 
 ```bash
 eas init
 ```
 
-`app.json`에 `extra.eas.projectId`가 추가된다. **이 값이 없으면 푸시 토큰을 발급받을 수 없다.** 파일을 열어 값이 들어갔는지 눈으로 확인한다.
+`app.json`의 `extra.eas.projectId`에 값이 들어갔다. **이 값이 없으면 푸시 토큰을 발급받을 수 없다.**
 
-- [ ] **Step 5: dev client 설치와 빌드 프로필 생성**
+- [x] **Step 5: dev client 설치와 빌드 프로필 생성** — 완료
 
 ```bash
 npx expo install expo-dev-client
 eas build:configure
 ```
 
-`eas.json`이 생성된다. `development` 프로필에 `"developmentClient": true`와 `"distribution": "internal"`이 있는지 확인한다. 없으면 추가한다.
+`eas.json`의 `development` 프로필에 `"developmentClient": true`와 `"distribution": "internal"`이 있는지 확인한다.
+
+- [x] **Step 5-1: 에이전트 스킬 심링크를 업로드에서 제외** — 완료
+
+`eas init`은 `.claude/skills/*` 를 `.agents/skills/*` 로 가리키는 심볼릭 링크로 설치한다. Windows에서는 심링크 생성에 관리자 권한이 필요해, EAS가 프로젝트를 임시 폴더로 복제할 때 다음 오류로 죽는다:
+
+```
+EPERM: operation not permitted, symlink '...\.agents\skills\eas-app-stores' -> '...\.claude\skills\eas-app-stores'
+Failed to upload the project tarball to EAS Build
+```
+
+이 문서들은 빌드와 무관하므로 저장소 루트의 `.gitignore`와 `.easignore`에서 제외한다. **`.easignore`가 존재하면 `.gitignore`를 대체하므로 `node_modules/` 등 기본 제외 대상도 함께 적어야 한다.**
+
+대안으로 Windows 개발자 모드(`설정 > 개인 정보 및 보안 > 개발자용`)를 켜면 심링크 생성이 허용되지만, 어차피 올릴 필요 없는 파일이므로 제외하는 편이 낫다.
 
 - [ ] **Step 6: Development Build 실행**
 
@@ -153,15 +154,42 @@ eas build --profile development --platform android
 npx expo start --dev-client
 ```
 
-폰에서 설치한 앱을 열고 QR을 스캔하거나 URL을 입력한다. Expo 기본 화면이 폰에 뜨면 성공이다.
+폰에서 설치한 앱을 열고 QR을 스캔한다. Expo 기본 화면이 폰에 뜨면 성공이다.
 
-`app/index.tsx`의 텍스트를 아무거나 바꿔 저장했을 때 폰 화면이 즉시 바뀌는지 확인한다. 바뀌면 개발 루프가 완성된 것이다.
+`src/app/index.tsx`의 텍스트를 아무거나 바꿔 저장했을 때 폰 화면이 즉시 바뀌는지 확인한다. 바뀌면 개발 루프가 완성된 것이다.
 
-- [ ] **Step 9: 삼성 기기라면 배터리 최적화 해제**
+**이 환경에서는 위 명령이 그냥은 동작하지 않는다.** 개발 서버는 PC의 사설 IP(`70.12.246.57`)로 접속을 요구하는데, 폰이 LTE에 있거나 교육기관 WiFi의 AP 격리가 켜져 있으면 그 주소에 닿을 수 없다. `ipconfig`에 함께 나오는 `vEthernet (...)` 계열 주소(`172.28.96.1`, `172.20.160.1`)는 Hyper-V/WSL 전용 가상 네트워크이므로 접속 대상이 아니다.
+
+**해결: Tailscale을 쓴다.** PC에 이미 설치되어 있고 주소는 `100.79.222.81`이다. 폰에 Tailscale 앱을 설치해 같은 계정으로 로그인한 뒤:
+
+```powershell
+$env:REACT_NATIVE_PACKAGER_HOSTNAME = "100.79.222.81"
+npx expo start --dev-client
+```
+
+이 환경변수가 QR과 접속 URL을 Tailscale 주소로 생성한다. 생략하면 QR에 사설 IP가 박혀 여전히 실패한다. Tailscale은 가능하면 P2P로 직결되므로 `--tunnel`보다 핫 리로드가 빠르다.
+
+대안 (Tailscale이 막힐 때):
+- **폰 핫스팟** — PC를 폰 핫스팟에 연결하면 같은 네트워크가 되고 AP 격리가 없다. 가장 빠르다.
+- **`npx expo start --dev-client --tunnel`** — ngrok 경유. 네트워크와 무관하게 되지만 느리다.
+
+진단 방법: 개발 서버를 띄운 상태에서 폰 브라우저로 `http://<주소>:8081`을 연다. 응답이 오면 네트워크는 정상이다. 브라우저와 앱은 같은 TCP 연결을 쓰므로 이 테스트가 유효하다.
+
+- [ ] **Step 9: 템플릿 데모 파일 정리**
+
+템플릿에는 탭 네비게이션과 예제 화면(`src/app/explore.tsx`, `src/components/themed-text.tsx` 등)이 들어 있다. 우리 화면과 섞이면 혼란스러우므로 정리한다.
+
+```bash
+npm run reset-project
+```
+
+기존 파일은 `app-example/`로 옮겨지고 빈 `src/app/index.tsx`와 `src/app/_layout.tsx`만 남는다. 이후 `app-example/` 폴더는 삭제해도 된다.
+
+- [ ] **Step 10: 삼성 기기라면 배터리 최적화 해제**
 
 `설정 > 배터리 > 백그라운드 사용 제한 > 절전 앱`에서 이 앱이 있으면 제거한다. 없어도 며칠 뒤 자동 추가될 수 있으므로, 알림이 안 오면 여기를 먼저 확인한다.
 
-- [ ] **Step 10: 커밋**
+- [ ] **Step 11: 커밋**
 
 ```bash
 cd C:/Users/SSAFY/Desktop/notification
@@ -176,12 +204,12 @@ git commit -m "feat: Expo 프로젝트 생성 및 development build 설정"
 **이 프로젝트의 핵심 관문이다.** 여기가 통과하면 나머지는 평범한 UI 작업이다.
 
 **Files:**
-- Create: `lib/push.ts`
-- Modify: `app/index.tsx` (임시 검증 화면)
+- Create: `src/lib/push.ts`
+- Modify: `src/app/index.tsx` (임시 검증 화면)
 
 **Interfaces:**
 - Consumes: Task 1의 `extra.eas.projectId`
-- Produces: `registerForPushNotifications(): Promise<PushRegistration>` — `lib/push.ts`에서 export
+- Produces: `registerForPushNotifications(): Promise<PushRegistration>` — `src/lib/push.ts`에서 export
 
 ```ts
 type PushRegistration =
@@ -193,10 +221,14 @@ type PushRegistration =
 
 ```bash
 cd C:/Users/SSAFY/Desktop/notification/mobile
-npx expo install expo-notifications expo-device expo-constants
+npx expo install expo-notifications
 ```
 
-- [ ] **Step 2: `lib/push.ts` 작성**
+`expo-device`와 `expo-constants`는 템플릿에 이미 포함되어 있으므로 설치할 필요가 없다.
+
+⚠️ `expo-notifications`는 네이티브 모듈이다. 설치 후 **development build를 다시 만들어야** 한다 (Task 1 Step 6 재실행). JS만 고칠 때와 달리 이 단계는 재빌드가 필요하다. Task 1의 첫 빌드를 아직 안 돌렸다면, 이 패키지를 먼저 설치하고 한 번만 빌드하는 편이 시간을 아낀다.
+
+- [ ] **Step 2: `src/lib/push.ts` 작성**
 
 ```ts
 import * as Notifications from "expo-notifications"
@@ -272,13 +304,13 @@ export async function registerForPushNotifications(): Promise<PushRegistration> 
 
 - [ ] **Step 3: 임시 검증 화면 작성**
 
-`app/index.tsx`를 통째로 교체한다. 이 화면은 Task 6에서 목록 화면으로 대체된다.
+`src/app/index.tsx`를 통째로 교체한다. 이 화면은 Task 6에서 목록 화면으로 대체된다.
 
 ```tsx
 import { useEffect, useState } from "react"
 import { Button, Pressable, ScrollView, Text, View } from "react-native"
 import * as Clipboard from "expo-clipboard"
-import { registerForPushNotifications, type PushRegistration } from "../lib/push"
+import { registerForPushNotifications, type PushRegistration } from "@/lib/push"
 
 export default function Index() {
   const [reg, setReg] = useState<PushRegistration | null>(null)
@@ -385,8 +417,8 @@ git commit -m "feat: 푸시 권한 요청 및 토큰 발급 구현"
 알림을 탭하면 해당 빌드 상세로 이동시키는 배선. 상세 화면은 아직 없으므로 임시 화면을 만든다.
 
 **Files:**
-- Create: `app/build/[id].tsx` (임시)
-- Modify: `app/_layout.tsx`
+- Create: `src/app/build/[id].tsx` (임시)
+- Modify: `src/app/_layout.tsx`
 
 **Interfaces:**
 - Consumes: Task 2의 알림 채널
@@ -395,7 +427,7 @@ git commit -m "feat: 푸시 권한 요청 및 토큰 발급 구현"
 - [ ] **Step 1: 임시 상세 화면 생성**
 
 ```tsx
-// app/build/[id].tsx
+// src/app/build/[id].tsx
 import { useLocalSearchParams } from "expo-router"
 import { Text, View } from "react-native"
 
@@ -410,7 +442,7 @@ export default function BuildDetail() {
 }
 ```
 
-- [ ] **Step 2: `app/_layout.tsx` 작성**
+- [ ] **Step 2: `src/app/_layout.tsx` 작성**
 
 ```tsx
 import { useEffect } from "react"
@@ -463,7 +495,7 @@ export default function RootLayout() {
 
 앱이 실행되면서 상세 화면이 열리고 `buildId: my-service#42`가 표시되어야 한다.
 
-**`#` 때문에 라우팅이 깨지면** (상세 화면이 안 열리거나 id가 잘림): `app/build/[id].tsx` 대신 쿼리 파라미터 방식으로 전환한다. `router.push({ pathname: "/build", params: { id: buildId } })`로 바꾸고 파일을 `app/build.tsx`로 옮긴다. 이 경우 이후 태스크의 경로도 함께 맞춘다.
+**`#` 때문에 라우팅이 깨지면** (상세 화면이 안 열리거나 id가 잘림): `src/app/build/[id].tsx` 대신 쿼리 파라미터 방식으로 전환한다. `router.push({ pathname: "/build", params: { id: buildId } })`로 바꾸고 파일을 `src/app/build.tsx`로 옮긴다. 이 경우 이후 태스크의 경로도 함께 맞춘다.
 
 - [ ] **Step 4: 🚩 검증 — 앱이 켜져 있을 때도 알림 표시**
 
@@ -482,12 +514,14 @@ git commit -m "feat: 알림 포그라운드 표시 및 탭 라우팅 구현"
 ## Task 4: NativeWind와 react-native-reusables 설정
 
 **Files:**
-- Create: `global.css`, `tailwind.config.js`, `nativewind-env.d.ts`
-- Modify: `metro.config.js`, `babel.config.js`, `tsconfig.json`, `app/_layout.tsx`
+- Create: `tailwind.config.js`, `metro.config.js`, `babel.config.js`, `nativewind-env.d.ts`
+- Modify: `src/global.css` (템플릿이 이미 생성해 둔 파일), `src/app/_layout.tsx`
 
 **Interfaces:**
 - Consumes: 없음
-- Produces: 모든 컴포넌트에서 `className="..."` 사용 가능, `~/` 경로 별칭
+- Produces: 모든 컴포넌트에서 `className="..."` 사용 가능
+
+템플릿에는 `metro.config.js`와 `babel.config.js`가 없다. Expo 기본값을 쓰기 때문이다. NativeWind가 이 둘을 요구하므로 새로 만든다. 반면 `src/global.css`는 이미 존재하며 CSS 변수만 들어 있다 — 지우지 말고 Tailwind 지시자를 앞에 추가한다.
 
 - [ ] **Step 1: react-native-reusables CLI로 초기화 시도**
 
@@ -498,32 +532,44 @@ npx @react-native-reusables/cli@latest init
 
 이 CLI가 NativeWind 설정을 대신 해주는 경우가 많다. **CLI가 설정을 마쳤다면 Step 2~6을 건너뛰고 Step 7로 간다.** CLI가 없거나 실패하면 Step 2부터 수동으로 진행한다.
 
+⚠️ CLI가 `src/` 구조를 인식하지 못하고 루트에 `components/`, `lib/`를 만들 수 있다. 그런 경우 생성된 파일을 `src/` 아래로 옮기고 import를 `@/`로 고친다.
+
 NativeWind 설정 파일 형식은 버전마다 바뀐다. 아래는 검증용 체크리스트로 쓰고, 충돌이 나면 https://www.nativewind.dev/docs/getting-started/installation 의 현재 문서를 우선한다.
 
 - [ ] **Step 2: 패키지 설치**
 
 ```bash
-npx expo install nativewind tailwindcss react-native-reanimated react-native-safe-area-context
+npx expo install nativewind tailwindcss
 ```
 
+`react-native-reanimated`와 `react-native-safe-area-context`는 템플릿에 이미 포함되어 있다.
+
 - [ ] **Step 3: `tailwind.config.js` 생성**
+
+`content`가 `src/`를 가리켜야 한다. 여기가 틀리면 클래스가 조용히 무시된다.
 
 ```js
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: ["./app/**/*.{js,jsx,ts,tsx}", "./components/**/*.{js,jsx,ts,tsx}"],
+  content: ["./src/**/*.{js,jsx,ts,tsx}"],
   presets: [require("nativewind/preset")],
   theme: { extend: {} },
   plugins: [],
 }
 ```
 
-- [ ] **Step 4: `global.css` 생성**
+- [ ] **Step 4: `src/global.css` 수정**
+
+이 파일은 이미 존재하며 폰트 관련 CSS 변수가 들어 있다. **기존 내용을 지우지 말고** 맨 위에 Tailwind 지시자를 추가한다.
 
 ```css
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  /* 기존 --font-* 변수들을 그대로 둔다 */
+}
 ```
 
 - [ ] **Step 5: `babel.config.js`와 `metro.config.js` 수정**
@@ -548,8 +594,10 @@ const { withNativeWind } = require("nativewind/metro")
 
 const config = getDefaultConfig(__dirname)
 
-module.exports = withNativeWind(config, { input: "./global.css" })
+module.exports = withNativeWind(config, { input: "./src/global.css" })
 ```
+
+경로가 `./global.css`가 아니라 **`./src/global.css`**다.
 
 - [ ] **Step 6: 타입 선언과 CSS 로드**
 
@@ -558,29 +606,26 @@ module.exports = withNativeWind(config, { input: "./global.css" })
 /// <reference types="nativewind/types" />
 ```
 
-`app/_layout.tsx` 최상단에 추가:
+`src/app/_layout.tsx` 최상단에 추가한다. `src/app/`에서 `src/global.css`로 가는 상대 경로다.
 
 ```tsx
 import "../global.css"
 ```
 
-- [ ] **Step 7: `tsconfig.json`에 `~/` 별칭 추가**
+- [ ] **Step 7: 경로 별칭 확인**
+
+`tsconfig.json`에 이미 다음이 설정되어 있다. 수정할 것이 없고, 값이 맞는지만 확인한다.
 
 ```json
-{
-  "compilerOptions": {
-    "paths": {
-      "~/*": ["./*"]
-    }
-  }
+"paths": {
+  "@/*": ["./src/*"],
+  "@/assets/*": ["./assets/*"]
 }
 ```
 
-기존 `"@/*"` 항목이 있어도 지우지 않고 `~/*`를 함께 둔다.
-
 - [ ] **Step 8: 🚩 검증 — Tailwind 클래스가 먹는지 확인**
 
-`app/build/[id].tsx`의 바깥 `View`를 임시로 바꾼다:
+`src/app/build/[id].tsx`의 바깥 `View`를 임시로 바꾼다:
 
 ```tsx
 <View className="flex-1 items-center justify-center bg-blue-500">
@@ -602,7 +647,7 @@ npx expo start --dev-client --clear
 npx @react-native-reusables/cli@latest add text button card
 ```
 
-`components/ui/` 아래에 파일이 생성된다. CLI가 다른 이름을 요구하면 `npx @react-native-reusables/cli@latest add` 를 인자 없이 실행해 사용 가능한 목록을 확인한다.
+`src/components/ui/` 아래에 파일이 생성된다 (루트에 생겼다면 `src/` 아래로 옮긴다). CLI가 다른 이름을 요구하면 `npx @react-native-reusables/cli@latest add` 를 인자 없이 실행해 사용 가능한 목록을 확인한다.
 
 - [ ] **Step 10: 커밋**
 
@@ -619,16 +664,16 @@ git commit -m "chore: NativeWind 및 react-native-reusables 설정"
 Task 1의 클라우드 빌드를 기다리는 동안 병행 가능한 유일한 태스크다.
 
 **Files:**
-- Create: `lib/types.ts`, `lib/mock.ts`, `lib/api.ts`, `lib/format.ts`
+- Create: `src/lib/types.ts`, `src/lib/mock.ts`, `src/lib/api.ts`, `src/lib/format.ts`
 
 **Interfaces:**
 - Consumes: 없음
 - Produces:
-  - `lib/types.ts`: `type BuildStatus`, `type Build`
-  - `lib/api.ts`: `fetchBuilds(limit?: number): Promise<Build[]>`, `fetchBuild(id: string): Promise<Build>`, `registerDevice(expoPushToken: string): Promise<void>`
-  - `lib/format.ts`: `formatDuration(ms: number): string`, `formatRelative(iso: string): string`
+  - `src/lib/types.ts`: `type BuildStatus`, `type Build`
+  - `src/lib/api.ts`: `fetchBuilds(limit?: number): Promise<Build[]>`, `fetchBuild(id: string): Promise<Build>`, `registerDevice(expoPushToken: string): Promise<void>`
+  - `src/lib/format.ts`: `formatDuration(ms: number): string`, `formatRelative(iso: string): string`
 
-- [ ] **Step 1: `lib/types.ts` 작성**
+- [ ] **Step 1: `src/lib/types.ts` 작성**
 
 ```ts
 export type BuildStatus = "SUCCESS" | "FAILURE" | "ABORTED" | "UNSTABLE"
@@ -647,7 +692,7 @@ export type Build = {
 }
 ```
 
-- [ ] **Step 2: `lib/mock.ts` 작성**
+- [ ] **Step 2: `src/lib/mock.ts` 작성**
 
 네 가지 상태가 모두 포함되도록 구성한다. UI가 모든 분기를 실제로 렌더링해봐야 하기 때문이다.
 
@@ -706,7 +751,7 @@ export const MOCK_BUILDS: Build[] = [
 ]
 ```
 
-- [ ] **Step 3: `lib/api.ts` 작성**
+- [ ] **Step 3: `src/lib/api.ts` 작성**
 
 **이 파일만이 mock 여부를 안다.** 화면은 절대 `MOCK_BUILDS`를 직접 import하지 않는다.
 
@@ -763,7 +808,7 @@ export async function registerDevice(expoPushToken: string): Promise<void> {
 }
 ```
 
-- [ ] **Step 4: `lib/format.ts` 작성**
+- [ ] **Step 4: `src/lib/format.ts` 작성**
 
 ```ts
 import { formatDistanceToNow } from "date-fns"
@@ -811,8 +856,8 @@ git commit -m "feat: Build 타입, mock 데이터, API 계층 추가"
 ## Task 6: 빌드 목록 화면
 
 **Files:**
-- Create: `components/StatusBadge.tsx`, `components/BuildCard.tsx`
-- Modify: `app/index.tsx`, `app/_layout.tsx`
+- Create: `src/components/StatusBadge.tsx`, `src/components/BuildCard.tsx`
+- Modify: `src/app/index.tsx`, `src/app/_layout.tsx`
 
 **Interfaces:**
 - Consumes: `fetchBuilds`, `registerDevice` (Task 5), `formatDuration`, `formatRelative` (Task 5), `registerForPushNotifications` (Task 2)
@@ -825,7 +870,7 @@ cd C:/Users/SSAFY/Desktop/notification/mobile
 npm install @tanstack/react-query
 ```
 
-- [ ] **Step 2: `app/_layout.tsx`에 QueryClientProvider 추가**
+- [ ] **Step 2: `src/app/_layout.tsx`에 QueryClientProvider 추가**
 
 Task 3에서 만든 파일에 Provider를 감싼다. 기존 알림 관련 코드는 그대로 둔다.
 
@@ -868,11 +913,11 @@ export default function RootLayout() {
 }
 ```
 
-- [ ] **Step 3: `components/StatusBadge.tsx` 작성**
+- [ ] **Step 3: `src/components/StatusBadge.tsx` 작성**
 
 ```tsx
 import { Text, View } from "react-native"
-import type { BuildStatus } from "~/lib/types"
+import type { BuildStatus } from "@/lib/types"
 
 const STYLE: Record<BuildStatus, { box: string; text: string; label: string }> = {
   SUCCESS: { box: "bg-green-100", text: "text-green-800", label: "성공" },
@@ -891,14 +936,14 @@ export function StatusBadge({ status }: { status: BuildStatus }) {
 }
 ```
 
-- [ ] **Step 4: `components/BuildCard.tsx` 작성**
+- [ ] **Step 4: `src/components/BuildCard.tsx` 작성**
 
 데이터를 가져오지 않는 순수 표현 컴포넌트다. props만 받는다.
 
 ```tsx
 import { Pressable, Text, View } from "react-native"
-import type { Build } from "~/lib/types"
-import { formatDuration, formatRelative } from "~/lib/format"
+import type { Build } from "@/lib/types"
+import { formatDuration, formatRelative } from "@/lib/format"
 import { StatusBadge } from "./StatusBadge"
 
 export function BuildCard({
@@ -933,7 +978,7 @@ export function BuildCard({
 }
 ```
 
-- [ ] **Step 5: `app/index.tsx`를 목록 화면으로 교체**
+- [ ] **Step 5: `src/app/index.tsx`를 목록 화면으로 교체**
 
 Task 2의 임시 토큰 화면을 대체한다. 토큰 발급은 계속하되, 화면 상단 배너로 상태만 알린다.
 
@@ -942,9 +987,9 @@ import { useEffect, useState } from "react"
 import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native"
 import { router } from "expo-router"
 import { useQuery } from "@tanstack/react-query"
-import { fetchBuilds, registerDevice } from "~/lib/api"
-import { registerForPushNotifications } from "~/lib/push"
-import { BuildCard } from "~/components/BuildCard"
+import { fetchBuilds, registerDevice } from "@/lib/api"
+import { registerForPushNotifications } from "@/lib/push"
+import { BuildCard } from "@/components/BuildCard"
 
 export default function Index() {
   const [pushError, setPushError] = useState<string | null>(null)
@@ -1055,21 +1100,21 @@ git commit -m "feat: 빌드 목록 화면 구현"
 ## Task 7: 빌드 상세 화면
 
 **Files:**
-- Modify: `app/build/[id].tsx`
+- Modify: `src/app/build/[id].tsx`
 
 **Interfaces:**
 - Consumes: `fetchBuild` (Task 5), `StatusBadge` (Task 6), `formatDuration`/`formatRelative` (Task 5)
 - Produces: 없음 (최종 화면)
 
-- [ ] **Step 1: `app/build/[id].tsx`를 실제 상세 화면으로 교체**
+- [ ] **Step 1: `src/app/build/[id].tsx`를 실제 상세 화면으로 교체**
 
 ```tsx
 import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View } from "react-native"
 import { useLocalSearchParams } from "expo-router"
 import { useQuery } from "@tanstack/react-query"
-import { fetchBuild } from "~/lib/api"
-import { StatusBadge } from "~/components/StatusBadge"
-import { formatDuration, formatRelative } from "~/lib/format"
+import { fetchBuild } from "@/lib/api"
+import { StatusBadge } from "@/components/StatusBadge"
+import { formatDuration, formatRelative } from "@/lib/format"
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -1180,7 +1225,7 @@ git commit -m "feat: 빌드 상세 화면 구현"
 
 **Files:**
 - Create: `mobile/.env.example`, `README.md` (저장소 루트)
-- Modify: `lib/api.ts` (주석 보강)
+- Modify: `src/lib/api.ts` (주석 보강)
 
 **Interfaces:**
 - Consumes: 전체
@@ -1232,7 +1277,7 @@ Development Build 재생성이 필요한 경우 (네이티브 패키지를 추�
 
 1. `docs/superpowers/specs/2026-08-11-jenkins-build-notifier-design.md`의 API 계약대로 `server/`에 백엔드 구현
 2. `mobile/.env.local`에 `EXPO_PUBLIC_API_URL` 설정
-3. `mobile/lib/api.ts`의 `USE_MOCK`을 `false`로 변경
+3. `mobile/src/lib/api.ts`의 `USE_MOCK`을 `false`로 변경
 4. Jenkins Post-build에 `POST /api/builds` 호출 추가
 
 앱 코드에서 수정할 곳은 `USE_MOCK` 한 줄뿐이다.
