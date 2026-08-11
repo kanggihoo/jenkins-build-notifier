@@ -229,6 +229,67 @@ npx expo install expo-notifications expo-clipboard
 
 빠뜨리면 Task 2에서 20분짜리 빌드를 다시 돌려야 한다. EAS 무료 티어에는 월 빌드 횟수 제한도 있다.
 
+- [ ] **Step 5-3: Android FCM 자격증명 설정**
+
+**이 단계를 빠뜨리면 토큰은 정상 발급되는데 알림만 오지 않는다.** 원인을 찾기 가장 어려운 유형의 실패이므로 빌드 전에 끝낸다.
+
+Expo Push Service를 쓰더라도 Android 전달은 결국 FCM을 거친다. Expo가 내 앱으로 알림을 밀어넣으려면 **내 Firebase 프로젝트의 자격증명**이 필요하다. Expo Go는 Expo 소유 Firebase 프로젝트를 쓰지만, 내가 만든 빌드는 내 것을 써야 한다.
+
+현재 상태는 `eas credentials`로 확인한다. `Push Notifications (FCM V1)`이 `None assigned yet`이면 설정이 필요하다.
+
+```bash
+eas credentials
+# Android → development 선택
+```
+
+**1. Firebase 프로젝트 생성**
+
+https://console.firebase.google.com 에서 프로젝트를 만든다. 이름은 무엇이든 좋다. Google Analytics는 필요 없으므로 끈다.
+
+**2. Android 앱 등록**
+
+프로젝트에 Android 앱을 추가한다. 패키지 이름은 `app.json`의 `expo.android.package`와 **정확히 일치해야 한다.**
+
+```
+com.kkh.mobile
+```
+
+한 글자라도 다르면 알림이 전달되지 않는다. 등록 후 `google-services.json`을 내려받는다. 이어지는 "SDK 추가", "Gradle 설정" 안내는 **모두 건너뛴다** — Expo가 대신 처리한다.
+
+**3. `google-services.json` 배치**
+
+파일을 `mobile/google-services.json`으로 저장하고 `app.json`의 `android` 블록에 경로를 지정한다.
+
+```json
+"android": {
+  "package": "com.kkh.mobile",
+  "googleServicesFile": "./google-services.json",
+  ...
+}
+```
+
+이 파일은 클라이언트 설정이며 비밀값이 아니다. 커밋해도 된다. 오히려 EAS 빌드에 포함되어야 하므로 `.easignore`에 넣으면 안 된다.
+
+**4. 서비스 계정 키 발급**
+
+Firebase 콘솔 → 프로젝트 설정(톱니) → **서비스 계정** 탭 → "새 비공개 키 생성" → JSON 파일을 내려받는다.
+
+⚠️ **이 파일은 비밀키다.** 이것만 있으면 누구든 내 앱 사용자 전체에게 알림을 보낼 수 있다. **절대 커밋하지 말 것.** 프로젝트 폴더 밖(예: `Downloads`)에 두는 편이 실수를 막는다.
+
+**5. EAS에 업로드**
+
+```bash
+eas credentials
+```
+
+`Android` → `development` → `Google Service Account` → `Manage your Google Service Account Key for Push Notifications (FCM V1)` → `Set up a Google Service Account Key`를 고르고 4번에서 받은 JSON 경로를 입력한다.
+
+완료 후 다시 `eas credentials`로 확인해 `Push Notifications (FCM V1)`에 키가 표시되면 성공이다.
+
+**6. 재빌드 필요**
+
+`google-services.json`은 APK에 포함되어야 하므로 이 설정 후에는 반드시 다시 빌드한다.
+
 - [ ] **Step 6: Development Build 실행**
 
 ```bash
@@ -508,10 +569,15 @@ npx expo start --dev-client
 **폰 알림창에 알림이 떠야 한다.** 앱이 꺼져 있어도 뜬다.
 
 **안 뜨면 확인 순서:**
+- `eas credentials`에서 `Push Notifications (FCM V1)`에 키가 등록되어 있는가 (Task 1 Step 5-3). **토큰이 발급되는데 알림만 안 오면 대부분 이것이다**
+- `google-services.json`을 추가한 뒤 재빌드한 APK를 설치했는가
+- Firebase에 등록한 패키지명이 `app.json`의 `android.package`와 정확히 같은가
 - 채널 ID를 `builds`로 넣었는가
 - 폰 설정에서 앱 알림이 켜져 있는가
 - 삼성이면 배터리 최적화에서 제외했는가 (Task 1 Step 10)
 - 폰이 절전 모드가 아닌가
+
+expo.dev/notifications의 응답에 `MismatchSenderId`나 `InvalidCredentials`가 보이면 FCM 자격증명 문제가 확정이다.
 
 - [ ] **Step 6: 커밋**
 

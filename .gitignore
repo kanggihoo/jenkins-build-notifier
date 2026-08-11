@@ -10,3 +10,7 @@ skills-lock.json
 # 환경변수
 .env.local
 .env*.local
+
+# Firebase 서비스 계정 키 - 절대 커밋 금지
+*-firebase-adminsdk-*.json
+service-account*.json
