@@ -21,7 +21,22 @@
 
 ---
 
+## 디렉터리 배치
+
+git 저장소는 `notification/`이며 이미 존재한다. Phase 2에서 백엔드가 `server/`로 들어올 자리를 남기기 위해 모바일 프로젝트를 `mobile/` 하위에 둔다.
+
+```
+notification/              ← git 저장소 루트 (이미 존재)
+├── docs/                  ← 스펙, 계획서 (이미 존재)
+├── mobile/                ← Expo 프로젝트 (Task 1에서 생성)
+└── server/                ← Phase 2에서 생성. 지금은 만들지 않는다
+```
+
+Expo 프로젝트 폴더 이름은 `app`이 아니라 **`mobile`**이다. Expo Router가 `app/`을 라우트 디렉터리로 사용하므로 `app/app/`이 되어 혼동을 일으킨다.
+
 ## 파일 구조
+
+아래는 모두 `notification/mobile/` 기준 상대 경로다.
 
 ```
 app/
@@ -64,11 +79,27 @@ babel.config.js
 
 ```bash
 cd C:/Users/SSAFY/Desktop/notification
-npx create-expo-app@latest app
-cd app
+npx create-expo-app@latest mobile
+cd mobile
 ```
 
 기본 템플릿에 TypeScript와 Expo Router가 포함되어 있다. 별도 옵션 불필요.
+
+- [ ] **Step 1-1: 중첩 git 저장소 제거**
+
+`create-expo-app`은 생성한 폴더에서 `git init`을 실행한다. `notification/.git` 안에 `notification/mobile/.git`이 생기면 바깥 저장소가 `mobile`의 내용을 추적하지 못한다. 커밋했는데 파일이 들어가지 않는 문제로 나타난다.
+
+```bash
+ls -d C:/Users/SSAFY/Desktop/notification/mobile/.git
+```
+
+존재하면 제거한다:
+
+```bash
+rm -rf C:/Users/SSAFY/Desktop/notification/mobile/.git
+```
+
+이후 `git status`를 `notification/`에서 실행했을 때 `mobile/` 내부 파일들이 개별적으로 보여야 한다. `mobile/`만 한 줄로 나오면 아직 중첩 저장소가 남아 있는 것이다.
 
 - [ ] **Step 2: 개발 서버가 뜨는지 확인**
 
@@ -161,7 +192,7 @@ type PushRegistration =
 - [ ] **Step 1: 푸시 패키지 설치**
 
 ```bash
-cd C:/Users/SSAFY/Desktop/notification/app
+cd C:/Users/SSAFY/Desktop/notification/mobile
 npx expo install expo-notifications expo-device expo-constants
 ```
 
@@ -461,7 +492,7 @@ git commit -m "feat: 알림 포그라운드 표시 및 탭 라우팅 구현"
 - [ ] **Step 1: react-native-reusables CLI로 초기화 시도**
 
 ```bash
-cd C:/Users/SSAFY/Desktop/notification/app
+cd C:/Users/SSAFY/Desktop/notification/mobile
 npx @react-native-reusables/cli@latest init
 ```
 
@@ -753,7 +784,7 @@ export function formatRelative(iso: string): string {
 - [ ] **Step 5: date-fns 설치**
 
 ```bash
-cd C:/Users/SSAFY/Desktop/notification/app
+cd C:/Users/SSAFY/Desktop/notification/mobile
 npm install date-fns
 ```
 
@@ -790,7 +821,7 @@ git commit -m "feat: Build 타입, mock 데이터, API 계층 추가"
 - [ ] **Step 1: TanStack Query 설치**
 
 ```bash
-cd C:/Users/SSAFY/Desktop/notification/app
+cd C:/Users/SSAFY/Desktop/notification/mobile
 npm install @tanstack/react-query
 ```
 
@@ -1148,7 +1179,7 @@ git commit -m "feat: 빌드 상세 화면 구현"
 ## Task 8: 정리와 Phase 2 인수인계
 
 **Files:**
-- Create: `.env.example`, `README.md`
+- Create: `mobile/.env.example`, `README.md` (저장소 루트)
 - Modify: `lib/api.ts` (주석 보강)
 
 **Interfaces:**
@@ -1182,7 +1213,7 @@ Phase 1 (모바일) 완료. 데이터는 mock이며 백엔드는 아직 없다.
 
 Expo Go로는 푸시가 동작하지 않는다. Development Build가 폰에 설치되어 있어야 한다.
 
-    cd app
+    cd mobile
     npx expo start --dev-client
 
 Development Build 재생성이 필요한 경우 (네이티브 패키지를 추가했을 때):
@@ -1199,9 +1230,9 @@ Development Build 재생성이 필요한 경우 (네이티브 패키지를 추�
 
 ## Phase 2 착수 방법
 
-1. `docs/superpowers/specs/2026-08-11-jenkins-build-notifier-design.md`의 API 계약대로 백엔드 구현
-2. `app/.env.local`에 `EXPO_PUBLIC_API_URL` 설정
-3. `app/lib/api.ts`의 `USE_MOCK`을 `false`로 변경
+1. `docs/superpowers/specs/2026-08-11-jenkins-build-notifier-design.md`의 API 계약대로 `server/`에 백엔드 구현
+2. `mobile/.env.local`에 `EXPO_PUBLIC_API_URL` 설정
+3. `mobile/lib/api.ts`의 `USE_MOCK`을 `false`로 변경
 4. Jenkins Post-build에 `POST /api/builds` 호출 추가
 
 앱 코드에서 수정할 곳은 `USE_MOCK` 한 줄뿐이다.
@@ -1216,7 +1247,7 @@ Development Build 재생성이 필요한 경우 (네이티브 패키지를 추�
 - [ ] **Step 4: 🚩 검증 — 최종 타입 체크**
 
 ```bash
-cd C:/Users/SSAFY/Desktop/notification/app
+cd C:/Users/SSAFY/Desktop/notification/mobile
 npx tsc --noEmit
 ```
 
