@@ -1,0 +1,12 @@
+node_modules/
+
+# EAS CLI가 설치하는 에이전트 스킬 문서.
+# .claude/skills/* 는 .agents/skills/* 를 가리키는 심볼릭 링크라
+# Windows에서 복제 시 EPERM을 일으킨다. 빌드와 무관하므로 추적하지 않는다.
+.agents/
+.claude/
+skills-lock.json
+
+# 환경변수
+.env.local
+.env*.local
