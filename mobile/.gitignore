@@ -33,6 +33,15 @@ yarn-error.*
 # local env files
 .env*.local
 
+# Firebase 클라이언트 설정 - 각자 자기 Firebase 프로젝트에서 받아야 함
+# EAS 빌드에는 .easignore에 없으므로 정상적으로 업로드된다
+google-services.json
+GoogleService-Info.plist
+
+# Firebase 서비스 계정 키 - 비밀키. 절대 커밋 금지
+*-firebase-adminsdk-*.json
+service-account*.json
+
 # typescript
 *.tsbuildinfo
 
