@@ -136,6 +136,16 @@ Failed to upload the project tarball to EAS Build
 
 대안으로 Windows 개발자 모드(`설정 > 개인 정보 및 보안 > 개발자용`)를 켜면 심링크 생성이 허용되지만, 어차피 올릴 필요 없는 파일이므로 제외하는 편이 낫다.
 
+**왜 `mobile/`이 아니라 저장소 루트가 문제인가:** EAS는 업로드 범위를 `eas.json` 위치가 아니라 **git 저장소 루트**로 잡는다. 모노레포에서 앱이 형제 패키지(`packages/ui` 등)를 참조할 수 있기 때문이다. 저장소 전체를 올린 뒤 `eas.json`이 있는 하위 폴더에서 빌드한다. 따라서 `.easignore`는 반드시 **저장소 루트**(`notification/`)에 둬야 하며, `mobile/`에 두면 효과가 없다.
+
+**20분짜리 빌드를 낭비하지 않고 검증하는 방법:**
+
+```bash
+eas build:inspect -p android -s archive -o <출력폴더> -e development
+```
+
+업로드될 아카이브를 로컬에 그대로 뽑아준다. 출력 폴더에서 `.agents/`, `.claude/`, `docs/`가 **빈 디렉터리**이고 `node_modules`가 없으면 정상이다. 이 단계가 통과하면 실제 빌드의 업로드 단계도 통과한다.
+
 - [ ] **Step 6: Development Build 실행**
 
 ```bash
