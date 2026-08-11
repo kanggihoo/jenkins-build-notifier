@@ -24,19 +24,6 @@
 
 ## 명령어 레퍼런스
 
-이 계획서에 나오는 명령어가 각각 무엇을 하는지 정리한다. 무엇이 바뀌는지 알고 치면 문제가 생겼을 때 원인을 좁히기 쉽다.
-
-### npm과 npx의 차이
-
-| 명령 | 하는 일 |
-|---|---|
-| `npm install <패키지>` | 패키지를 내려받아 `node_modules/`에 넣고 `package.json`에 기록한다 |
-| `npm install -g <패키지>` | 전역 설치. 어느 폴더에서든 명령어로 쓸 수 있게 된다 (`eas-cli`가 이 경우) |
-| `npx <명령>` | **설치 없이 1회성 실행.** 로컬 `node_modules/.bin`에서 찾고, 없으면 레지스트리에서 임시로 받아 실행한 뒤 버린다 |
-| `npm run <스크립트>` | `package.json`의 `scripts`에 정의된 것을 실행한다 |
-
-`npx`를 쓰는 이유는 `create-expo-app`처럼 **한 번만 필요한 도구를 전역에 설치해두지 않기 위해서**다. 버전 고정 효과도 있다 — `@latest`를 붙이면 매번 최신을 받는다.
-
 ### `npm install`과 `npx expo install`의 차이
 
 | 명령 | 언제 |
@@ -53,7 +40,7 @@
 | `npx expo start` | **Metro 번들러(개발 서버)를 8081 포트에 띄운다.** 폰이 여기 접속해 JS 코드를 실시간으로 받아간다. 서버는 켜둔 채로 개발한다 |
 | `npx expo start --dev-client` | 위와 같되 Expo Go가 아니라 **직접 만든 development build로 연결**하라는 뜻 |
 | `npx expo start --clear` | Metro 캐시를 비우고 시작. **설정 파일(`metro.config.js`, `babel.config.js`, `tailwind.config.js`)을 바꾼 뒤에는 반드시 필요하다.** 캐시가 남아 있으면 변경이 반영되지 않아 "설정이 틀렸나?" 하고 헤매게 된다 |
-| `npm run reset-project` | 템플릿이 만들어둔 예제 화면을 `app-example/`로 치우고 빈 화면만 남긴다. 템플릿 전용 스크립트다 |
+| `npm run reset-project` | ⚠️ **이 프로젝트에서는 쓰지 않는다.** `src/`와 `scripts/`를 통째로 `example/`로 옮겨 `src/global.css`까지 없애 버린다 |
 
 ### EAS(Expo Application Services) 관련
 
@@ -74,15 +61,6 @@ EAS는 Expo가 운영하는 **클라우드 빌드 서비스**다. 내 PC에 Andr
 용도는 하나다 — **20분짜리 빌드를 날리기 전에 업로드 단계가 통과할지 미리 확인하는 것.** 이 프로젝트에서는 심볼릭 링크 때문에 업로드가 실패한 적이 있어서(Task 1 Step 5-1), 수정이 먹혔는지 검증하는 데 썼다. 출력 폴더를 열어 `.agents/`, `.claude/`, `docs/`가 비어 있고 `node_modules`가 없으면 정상이다.
 
 빌드가 업로드 단계에서 실패할 때만 쓰면 되고, 평소에는 쓸 일이 없다.
-
-### 검증 명령
-
-| 명령 | 하는 일 |
-|---|---|
-| `npx tsc --noEmit` | **타입 검사만 하고 JS 파일은 만들지 않는다.** `--noEmit`이 "출력하지 마라"는 뜻이다. 에러 없이 끝나면 타입이 맞는 것이다 |
-| `git status` | 아직 커밋되지 않은 변경 목록 |
-| `git add -A` / `git commit -m "..."` | 변경을 스테이지에 올리고 기록 |
-
 ---
 
 ## 디렉터리 배치
@@ -123,12 +101,6 @@ tailwind.config.js
 metro.config.js
 babel.config.js
 ```
-
-`@/` 별칭은 `src/`를 가리킨다. 즉 `@/lib/api`는 `src/lib/api.ts`다.
-
-템플릿이 생성한 데모 파일(`src/app/explore.tsx`, `src/components/themed-text.tsx` 등)은 Task 1에서 `npm run reset-project`로 정리한다.
-
-책임 분리 원칙: `src/app/`의 화면은 데이터 출처를 모른다. `src/lib/api.ts`만이 mock 여부를 안다. `src/components/`는 props만 받는 순수 표현 컴포넌트로, 데이터 페칭을 하지 않는다.
 
 ---
 
@@ -355,13 +327,31 @@ Phase 2에서 백엔드를 붙일 때 `EXPO_PUBLIC_API_URL`도 같은 파일에 
 
 - [ ] **Step 9: 템플릿 데모 파일 정리**
 
-템플릿에는 탭 네비게이션과 예제 화면(`src/app/explore.tsx`, `src/components/themed-text.tsx` 등)이 들어 있다. 우리 화면과 섞이면 혼란스러우므로 정리한다.
+템플릿에는 탭 네비게이션과 예제 화면(`src/app/explore.tsx`, `src/components/themed-text.tsx` 등)이 들어 있다.
+
+⚠️ **`npm run reset-project`를 쓰지 않는다.** 이 스크립트는 `src/`와 `scripts/`를 **통째로** `example/`로 옮기고 빈 `src/app/`만 남긴다. `src/global.css`까지 사라져서 Task 4의 NativeWind 설정이 깨진다.
+
+대신 필요한 것만 지운다. 지금 지울 것은 라우트 파일 하나뿐이다 — Expo Router는 `src/app/` 안의 모든 파일을 라우트로 등록하므로, 쓰지 않는 화면을 남겨두면 `/explore` 라우트가 생긴다.
 
 ```bash
-npm run reset-project
+rm src/app/explore.tsx
 ```
 
-기존 파일은 `app-example/`로 옮겨지고 빈 `src/app/index.tsx`와 `src/app/_layout.tsx`만 남는다. 이후 `app-example/` 폴더는 삭제해도 된다.
+`src/components/`, `src/hooks/`, `src/constants/`의 데모 파일은 **아직 지우지 않는다.** 현재 `src/app/_layout.tsx`가 이들을 import하고 있어 지금 지우면 앱이 깨진다. Task 3에서 `_layout.tsx`를 새로 쓴 뒤에는 아무도 참조하지 않는 죽은 코드가 되므로, 그때 함께 지운다.
+
+Metro는 import되지 않은 파일을 번들에 넣지 않으므로, 남아 있어도 앱 동작이나 크기에는 영향이 없다. 정리는 가독성 문제다.
+
+**Task 3 완료 후 지울 것:**
+
+```bash
+rm -rf src/components/animated-icon* src/components/app-tabs* \
+       src/components/external-link.tsx src/components/hint-row.tsx \
+       src/components/themed-text.tsx src/components/themed-view.tsx \
+       src/components/web-badge.tsx src/components/ui/collapsible.tsx \
+       src/hooks src/constants
+```
+
+`src/global.css`는 **지우지 않는다.** Task 4에서 사용한다.
 
 - [ ] **Step 10: 삼성 기기라면 배터리 최적화 해제**
 
