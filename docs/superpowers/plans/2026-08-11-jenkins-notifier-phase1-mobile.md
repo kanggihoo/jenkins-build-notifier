@@ -253,14 +253,38 @@ npx expo start --dev-client
 
 **이 환경에서는 위 명령이 그냥은 동작하지 않는다.** 개발 서버는 PC의 사설 IP(`70.12.246.57`)로 접속을 요구하는데, 폰이 LTE에 있거나 교육기관 WiFi의 AP 격리가 켜져 있으면 그 주소에 닿을 수 없다. `ipconfig`에 함께 나오는 `vEthernet (...)` 계열 주소(`172.28.96.1`, `172.20.160.1`)는 Hyper-V/WSL 전용 가상 네트워크이므로 접속 대상이 아니다.
 
-**해결: Tailscale을 쓴다.** PC에 이미 설치되어 있고 주소는 `100.79.222.81`이다. 폰에 Tailscale 앱을 설치해 같은 계정으로 로그인한 뒤:
+**해결: Tailscale을 쓴다.** PC에 이미 설치되어 있고 주소는 `100.79.222.81`이다. 폰에 Tailscale 앱을 설치해 같은 계정으로 로그인한다.
 
-```powershell
-$env:REACT_NATIVE_PACKAGER_HOSTNAME = "100.79.222.81"
+그다음 `mobile/.env.local`에 접속 주소를 적어둔다. 매번 터미널에 환경변수를 넣지 않기 위해서다.
+
+```
+REACT_NATIVE_PACKAGER_HOSTNAME=100.79.222.81
+```
+
+이제 평소대로 실행하면 된다.
+
+```bash
 npx expo start --dev-client
 ```
 
-이 환경변수가 QR과 접속 URL을 Tailscale 주소로 생성한다. 생략하면 QR에 사설 IP가 박혀 여전히 실패한다. Tailscale은 가능하면 P2P로 직결되므로 `--tunnel`보다 핫 리로드가 빠르다.
+시작할 때 다음이 출력되면 정상이다.
+
+```
+env: load .env.local
+env: export REACT_NATIVE_PACKAGER_HOSTNAME
+```
+
+이 변수가 QR과 접속 URL을 Tailscale 주소로 생성한다. 없으면 QR에 사설 IP가 박혀 여전히 실패한다. Tailscale은 가능하면 P2P로 직결되므로 `--tunnel`보다 핫 리로드가 빠르다.
+
+⚠️ **파일명이 `.env`가 아니라 `.env.local`이어야 한다.** Expo는 이 변수를 개발자 개인 설정으로 분류해 `.env`에 있으면 다음 오류로 거부한다.
+
+```
+Error: Refused to load personal environment variables from a non-.local env file.
+```
+
+PC마다 IP가 다르므로 팀 공유용 `.env`에 들어가면 안 된다는 뜻이다. `.env*.local`은 `mobile/.gitignore`에 이미 등록되어 있어 커밋되지 않는다.
+
+Phase 2에서 백엔드를 붙일 때 `EXPO_PUBLIC_API_URL`도 같은 파일에 추가한다.
 
 대안 (Tailscale이 막힐 때):
 - **폰 핫스팟** — PC를 폰 핫스팟에 연결하면 같은 네트워크가 되고 AP 격리가 없다. 가장 빠르다.
