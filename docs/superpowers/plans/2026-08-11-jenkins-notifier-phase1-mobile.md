@@ -22,6 +22,69 @@
 
 ---
 
+## 명령어 레퍼런스
+
+이 계획서에 나오는 명령어가 각각 무엇을 하는지 정리한다. 무엇이 바뀌는지 알고 치면 문제가 생겼을 때 원인을 좁히기 쉽다.
+
+### npm과 npx의 차이
+
+| 명령 | 하는 일 |
+|---|---|
+| `npm install <패키지>` | 패키지를 내려받아 `node_modules/`에 넣고 `package.json`에 기록한다 |
+| `npm install -g <패키지>` | 전역 설치. 어느 폴더에서든 명령어로 쓸 수 있게 된다 (`eas-cli`가 이 경우) |
+| `npx <명령>` | **설치 없이 1회성 실행.** 로컬 `node_modules/.bin`에서 찾고, 없으면 레지스트리에서 임시로 받아 실행한 뒤 버린다 |
+| `npm run <스크립트>` | `package.json`의 `scripts`에 정의된 것을 실행한다 |
+
+`npx`를 쓰는 이유는 `create-expo-app`처럼 **한 번만 필요한 도구를 전역에 설치해두지 않기 위해서**다. 버전 고정 효과도 있다 — `@latest`를 붙이면 매번 최신을 받는다.
+
+### `npm install`과 `npx expo install`의 차이
+
+| 명령 | 언제 |
+|---|---|
+| `npx expo install <패키지>` | **Expo가 관리하는 패키지.** 현재 SDK 버전(57)과 호환되는 버전을 골라 설치한다 |
+| `npm install <패키지>` | **Expo와 무관한 순수 JS 패키지** (`date-fns`, `@tanstack/react-query`) |
+
+`expo-notifications` 같은 패키지를 `npm install`로 깔면 SDK와 버전이 어긋나 런타임에 깨질 수 있다. Expo 생태계 패키지는 반드시 `npx expo install`을 쓴다.
+
+### 개발 서버 관련
+
+| 명령 | 하는 일 |
+|---|---|
+| `npx expo start` | **Metro 번들러(개발 서버)를 8081 포트에 띄운다.** 폰이 여기 접속해 JS 코드를 실시간으로 받아간다. 서버는 켜둔 채로 개발한다 |
+| `npx expo start --dev-client` | 위와 같되 Expo Go가 아니라 **직접 만든 development build로 연결**하라는 뜻 |
+| `npx expo start --clear` | Metro 캐시를 비우고 시작. **설정 파일(`metro.config.js`, `babel.config.js`, `tailwind.config.js`)을 바꾼 뒤에는 반드시 필요하다.** 캐시가 남아 있으면 변경이 반영되지 않아 "설정이 틀렸나?" 하고 헤매게 된다 |
+| `npm run reset-project` | 템플릿이 만들어둔 예제 화면을 `app-example/`로 치우고 빈 화면만 남긴다. 템플릿 전용 스크립트다 |
+
+### EAS(Expo Application Services) 관련
+
+EAS는 Expo가 운영하는 **클라우드 빌드 서비스**다. 내 PC에 Android Studio나 JDK를 설치하지 않고 APK를 만들 수 있다.
+
+| 명령 | 하는 일 | 남는 것 |
+|---|---|---|
+| `eas login` | Expo 계정 로그인 | 로그인 세션 |
+| `eas init` | Expo 서버에 프로젝트를 등록해 고유 ID를 발급받는다 | `app.json`의 `extra.eas.projectId` |
+| `eas build:configure` | 빌드 설정 파일 생성 | `eas.json` |
+| `eas build --profile development --platform android` | **클라우드에 소스를 올려 APK를 만든다.** 15~20분 | 다운로드 링크와 QR |
+| `eas build:inspect -p android -s archive -o <폴더>` | 아래 참조 | 지정한 폴더에 아카이브 사본 |
+
+**`projectId`가 왜 필요한가:** 푸시 토큰은 "이 앱의 이 설치본"을 가리키는 주소다. Expo 서버가 그 주소를 발급하려면 어떤 프로젝트인지 알아야 하므로, `eas init` 없이는 토큰을 받을 수 없다.
+
+**`eas build:inspect`가 하는 일:** 실제 빌드를 하지 않고, **클라우드에 업로드될 파일 묶음만 로컬에 그대로 뽑아준다.** `-s archive`가 "업로드 직전 단계"라는 뜻이고 `-o`는 출력 폴더다.
+
+용도는 하나다 — **20분짜리 빌드를 날리기 전에 업로드 단계가 통과할지 미리 확인하는 것.** 이 프로젝트에서는 심볼릭 링크 때문에 업로드가 실패한 적이 있어서(Task 1 Step 5-1), 수정이 먹혔는지 검증하는 데 썼다. 출력 폴더를 열어 `.agents/`, `.claude/`, `docs/`가 비어 있고 `node_modules`가 없으면 정상이다.
+
+빌드가 업로드 단계에서 실패할 때만 쓰면 되고, 평소에는 쓸 일이 없다.
+
+### 검증 명령
+
+| 명령 | 하는 일 |
+|---|---|
+| `npx tsc --noEmit` | **타입 검사만 하고 JS 파일은 만들지 않는다.** `--noEmit`이 "출력하지 마라"는 뜻이다. 에러 없이 끝나면 타입이 맞는 것이다 |
+| `git status` | 아직 커밋되지 않은 변경 목록 |
+| `git add -A` / `git commit -m "..."` | 변경을 스테이지에 올리고 기록 |
+
+---
+
 ## 디렉터리 배치
 
 git 저장소는 `notification/`이며 이미 존재한다. Phase 2에서 백엔드가 `server/`로 들어올 자리를 남기기 위해 모바일 프로젝트를 `mobile/` 하위에 둔다.
@@ -554,6 +617,8 @@ cd C:/Users/SSAFY/Desktop/notification/mobile
 npx @react-native-reusables/cli@latest init
 ```
 
+이 CLI는 shadcn/ui와 같은 방식으로 동작한다 — **패키지를 의존성으로 추가하는 게 아니라, 컴포넌트 소스 코드를 내 프로젝트에 복사해 넣는다.** 그래서 나중에 자유롭게 고칠 수 있다. `init`은 그 준비 작업(설정 파일 생성, 유틸 함수 추가)을 한다.
+
 이 CLI가 NativeWind 설정을 대신 해주는 경우가 많다. **CLI가 설정을 마쳤다면 Step 2~6을 건너뛰고 Step 7로 간다.** CLI가 없거나 실패하면 Step 2부터 수동으로 진행한다.
 
 ⚠️ CLI가 `src/` 구조를 인식하지 못하고 루트에 `components/`, `lib/`를 만들 수 있다. 그런 경우 생성된 파일을 `src/` 아래로 옮기고 import를 `@/`로 고친다.
@@ -565,6 +630,8 @@ NativeWind 설정 파일 형식은 버전마다 바뀐다. 아래는 검증용 �
 ```bash
 npx expo install nativewind tailwindcss
 ```
+
+`tailwindcss`는 클래스 이름을 해석하는 엔진이고, `nativewind`는 그 결과를 **React Native의 `StyleSheet` 객체로 변환**하는 어댑터다. RN에는 CSS가 없으므로 이 변환이 필요하다. 둘 다 빌드 타임에만 동작하는 순수 JS 패키지라 **네이티브 재빌드가 필요 없다.**
 
 `react-native-reanimated`와 `react-native-safe-area-context`는 템플릿에 이미 포함되어 있다.
 
@@ -661,6 +728,8 @@ import "../global.css"
 npx expo start --dev-client --clear
 ```
 
+`--clear`가 핵심이다. Metro는 변환 결과를 캐시해두는데, 방금 만든 `metro.config.js`·`babel.config.js`·`tailwind.config.js`는 **캐시를 비우지 않으면 반영되지 않는다.** 이걸 빠뜨리면 설정이 맞는데도 클래스가 안 먹혀서 원인을 엉뚱한 데서 찾게 된다.
+
 상세 화면 배경이 파란색이 되고 내용이 가운데 정렬되면 성공이다. **안 되면 다음 태스크로 넘어가지 말 것** — 이후 모든 UI가 이 설정에 의존한다.
 
 확인 후 임시 `className`은 되돌린다.
@@ -670,6 +739,8 @@ npx expo start --dev-client --clear
 ```bash
 npx @react-native-reusables/cli@latest add text button card
 ```
+
+`add`는 지정한 컴포넌트의 **소스 파일을 내 프로젝트에 복사**한다. 설치가 아니라 복사라서, 복사된 파일은 내 코드이고 마음대로 수정해도 된다.
 
 `src/components/ui/` 아래에 파일이 생성된다 (루트에 생겼다면 `src/` 아래로 옮긴다). CLI가 다른 이름을 요구하면 `npx @react-native-reusables/cli@latest add` 를 인자 없이 실행해 사용 가능한 목록을 확인한다.
 
@@ -865,7 +936,9 @@ Expo가 관리하는 패키지가 아니므로 `npm install`을 쓴다.
 npx tsc --noEmit
 ```
 
-에러가 없어야 한다.
+TypeScript 컴파일러를 **타입 검사 전용으로** 돌린다. `--noEmit`은 "JS 파일은 만들지 마라"는 뜻이다. 실제 변환은 Metro가 하므로 여기서는 검사만 필요하다.
+
+아무 출력 없이 끝나면 통과다. 파일을 만들었지만 아직 화면에서 쓰지 않는 지금 단계에서, import 경로(`@/lib/...`)와 타입이 맞는지 미리 확인하는 용도다.
 
 - [ ] **Step 7: 커밋**
 
@@ -893,6 +966,10 @@ git commit -m "feat: Build 타입, mock 데이터, API 계층 추가"
 cd C:/Users/SSAFY/Desktop/notification/mobile
 npm install @tanstack/react-query
 ```
+
+웹에서 쓰는 것과 **완전히 같은 패키지**다. RN 전용 버전이 따로 없다. 순수 JS라 네이티브 재빌드가 필요 없고, `npx expo install`이 아니라 `npm install`을 쓴다.
+
+이 라이브러리가 대신 해주는 일: 로딩 상태, 에러 상태, 캐싱, pull-to-refresh, 재시도. 직접 `useState` + `useEffect`로 짜면 화면마다 반복되는 코드다.
 
 - [ ] **Step 2: `src/app/_layout.tsx`에 QueryClientProvider 추가**
 
