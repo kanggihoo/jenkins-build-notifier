@@ -146,6 +146,26 @@ eas build:inspect -p android -s archive -o <출력폴더> -e development
 
 업로드될 아카이브를 로컬에 그대로 뽑아준다. 출력 폴더에서 `.agents/`, `.claude/`, `docs/`가 **빈 디렉터리**이고 `node_modules`가 없으면 정상이다. 이 단계가 통과하면 실제 빌드의 업로드 단계도 통과한다.
 
+- [ ] **Step 5-2: 네이티브 모듈을 빌드 전에 모두 설치**
+
+development build는 네이티브 껍데기이고 JS는 Metro가 실시간으로 공급한다. 따라서 **JS 코드 수정에는 재빌드가 필요 없지만, 네이티브 모듈을 추가하면 재빌드가 필요하다.**
+
+| 작업 | 재빌드 |
+|---|---|
+| `.ts` / `.tsx` 수정, 스타일 변경 | 불필요 |
+| 순수 JS 패키지 추가 (`date-fns`, `@tanstack/react-query`, `nativewind`) | 불필요 (Metro 재시작만) |
+| 네이티브 모듈 추가 (`expo-notifications`, `expo-clipboard`) | **필요** |
+| `app.json` 변경 (이름, 아이콘, 권한, 패키지명) | **필요** |
+| Expo SDK 업그레이드 | **필요** |
+
+Phase 1에서 필요한 네이티브 모듈은 아래 둘뿐이다. 빌드 전에 함께 설치하면 **Phase 1 전체에서 빌드는 한 번으로 끝난다.**
+
+```bash
+npx expo install expo-notifications expo-clipboard
+```
+
+빠뜨리면 Task 2에서 20분짜리 빌드를 다시 돌려야 한다. EAS 무료 티어에는 월 빌드 횟수 제한도 있다.
+
 - [ ] **Step 6: Development Build 실행**
 
 ```bash
@@ -229,14 +249,14 @@ type PushRegistration =
 
 - [ ] **Step 1: 푸시 패키지 설치**
 
+Task 1 Step 5-2에서 `expo-notifications`와 `expo-clipboard`를 이미 설치했다면 건너뛴다. 설치를 빠뜨렸다면 지금 설치하고 **development build를 다시 만들어야 한다** (Task 1 Step 6 재실행) — 둘 다 네이티브 모듈이기 때문이다.
+
 ```bash
 cd C:/Users/SSAFY/Desktop/notification/mobile
-npx expo install expo-notifications
+npx expo install expo-notifications expo-clipboard
 ```
 
 `expo-device`와 `expo-constants`는 템플릿에 이미 포함되어 있으므로 설치할 필요가 없다.
-
-⚠️ `expo-notifications`는 네이티브 모듈이다. 설치 후 **development build를 다시 만들어야** 한다 (Task 1 Step 6 재실행). JS만 고칠 때와 달리 이 단계는 재빌드가 필요하다. Task 1의 첫 빌드를 아직 안 돌렸다면, 이 패키지를 먼저 설치하고 한 번만 빌드하는 편이 시간을 아낀다.
 
 - [ ] **Step 2: `src/lib/push.ts` 작성**
 
@@ -371,13 +391,7 @@ export default function Index() {
 }
 ```
 
-- [ ] **Step 4: 클립보드 패키지 설치**
-
-```bash
-npx expo install expo-clipboard
-```
-
-- [ ] **Step 5: 앱 실행하고 토큰 확인**
+- [ ] **Step 4: 앱 실행하고 토큰 확인**
 
 ```bash
 npx expo start --dev-client
@@ -392,7 +406,7 @@ npx expo start --dev-client
 - "EAS projectId가 없습니다" → `app.json`에 `extra.eas.projectId`가 있는지 확인. 없으면 `eas init` 재실행.
 - 권한 팝업이 안 뜸 → 이미 거부한 상태다. 폰 설정에서 앱 알림을 켜고 재실행.
 
-- [ ] **Step 6: 🚩 검증 — 앱을 완전히 종료한 상태에서 알림 수신**
+- [ ] **Step 5: 🚩 검증 — 앱을 완전히 종료한 상태에서 알림 수신**
 
 이것이 이 프로젝트 전체에서 가장 중요한 검증이다.
 
@@ -409,10 +423,10 @@ npx expo start --dev-client
 **안 뜨면 확인 순서:**
 - 채널 ID를 `builds`로 넣었는가
 - 폰 설정에서 앱 알림이 켜져 있는가
-- 삼성이면 배터리 최적화에서 제외했는가 (Task 1 Step 9)
+- 삼성이면 배터리 최적화에서 제외했는가 (Task 1 Step 10)
 - 폰이 절전 모드가 아닌가
 
-- [ ] **Step 7: 커밋**
+- [ ] **Step 6: 커밋**
 
 ```bash
 cd C:/Users/SSAFY/Desktop/notification
