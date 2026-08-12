@@ -602,7 +602,8 @@ export default function BuildDetail() {
 
 ```tsx
 import { useEffect } from "react"
-import { Stack, router } from "expo-router"
+import { router } from "expo-router"
+import { Stack } from "expo-router/stack"
 import * as Notifications from "expo-notifications"
 
 /**
@@ -627,7 +628,7 @@ export default function RootLayout() {
     const data = response?.notification.request.content.data
     const buildId = data?.buildId
     if (typeof buildId === "string" && buildId.length > 0) {
-      router.push(`/build/${encodeURIComponent(buildId)}`)
+      router.push({ pathname: '/build/[id]', params: { id: buildId } })
     }
   }, [response])
 
@@ -653,7 +654,19 @@ SDK 57의 `NotificationBehavior`가 받는 필드는 `shouldPlaySound`, `shouldS
 
 앱이 실행되면서 상세 화면이 열리고 `buildId: my-service#42`가 표시되어야 한다.
 
-**`#` 때문에 라우팅이 깨지면** (상세 화면이 안 열리거나 id가 잘림): `src/app/build/[id].tsx` 대신 쿼리 파라미터 방식으로 전환한다. `router.push({ pathname: "/build", params: { id: buildId } })`로 바꾸고 파일을 `src/app/build.tsx`로 옮긴다. 이 경우 이후 태스크의 경로도 함께 맞춘다.
+**`#` 문자 처리** — `router.push`에 문자열이 아니라 **객체 형태**를 넘긴다.
+
+```tsx
+// 위험: buildId의 #이 URL 프래그먼트 구분자로 해석되어 뒷부분이 잘린다
+router.push(`/build/${buildId}`)
+
+// 안전: Expo Router가 인코딩을 처리한다
+router.push({ pathname: '/build/[id]', params: { id: buildId } })
+```
+
+`pathname`에는 **라우트 패턴 그대로**(`/build/[id]`) 넣고 실제 값은 `params`로 전달한다. 수동 `encodeURIComponent`가 필요 없다.
+
+이 방식으로도 깨지면 `useLocalSearchParams`가 받는 값을 로그로 확인한다.
 
 - [ ] **Step 4: 🚩 검증 — 앱이 켜져 있을 때도 알림 표시**
 
@@ -1049,7 +1062,8 @@ Task 3에서 만든 파일에 Provider를 감싼다. 기존 알림 관련 코드
 ```tsx
 import "../global.css"
 import { useEffect, useState } from "react"
-import { Stack, router } from "expo-router"
+import { router } from "expo-router"
+import { Stack } from "expo-router/stack"
 import * as Notifications from "expo-notifications"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
@@ -1069,7 +1083,7 @@ export default function RootLayout() {
   useEffect(() => {
     const buildId = response?.notification.request.content.data?.buildId
     if (typeof buildId === "string" && buildId.length > 0) {
-      router.push(`/build/${encodeURIComponent(buildId)}`)
+      router.push({ pathname: '/build/[id]', params: { id: buildId } })
     }
   }, [response])
 
@@ -1229,7 +1243,7 @@ export default function Index() {
         renderItem={({ item }) => (
           <BuildCard
             build={item}
-            onPress={() => router.push(`/build/${encodeURIComponent(item.id)}`)}
+            onPress={() => router.push({ pathname: '/build/[id]', params: { id: item.id } })}
           />
         )}
         onRefresh={() => refetch()}
