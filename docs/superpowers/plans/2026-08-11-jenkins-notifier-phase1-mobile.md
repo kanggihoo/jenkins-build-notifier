@@ -6,7 +6,7 @@
 
 **Architecture:** Expo Router 기반 2화면 앱. 모든 데이터 접근은 `src/lib/api.ts` 뒤에 숨겨 `USE_MOCK` 플래그 하나로 mock/실서버를 전환한다. 푸시 수신 검증을 최우선으로 배치해, 가장 불확실한 부분을 UI 작업 전에 끝낸다.
 
-**Tech Stack:** TypeScript, **Expo SDK 57**, Expo Router, NativeWind, react-native-reusables, TanStack Query, expo-notifications, date-fns
+**Tech Stack:** TypeScript, **Expo SDK 57**, Expo Router, **NativeWind v5 + Tailwind CSS v4**, TanStack Query, expo-notifications, date-fns
 
 ## Global Constraints
 
@@ -16,7 +16,7 @@
 - **에뮬레이터로 푸시를 테스트하지 않는다.** 실기기가 필요하다.
 - **로컬 저장소(AsyncStorage/MMKV/SQLite)를 도입하지 않는다.** 앱 실행마다 토큰을 재발급해 서버에 재등록한다.
 - **전역 상태관리 라이브러리를 도입하지 않는다.** 서버 상태는 TanStack Query, 나머지는 `useState`.
-- **경로 별칭은 `@/`를 쓴다.** 템플릿의 `tsconfig.json`에 `"@/*": ["./src/*"]`가 이미 설정되어 있다. 별도 설정이 필요 없다. react-native-reusables가 `~/`를 쓰는 컴포넌트를 생성하면 `@/`로 고친다.
+- **경로 별칭은 `@/`를 쓴다.** 템플릿의 `tsconfig.json`에 `"@/*": ["./src/*"]`가 이미 설정되어 있다. 별도 설정이 필요 없다.
 - **소스는 모두 `src/` 아래에 있다.** 라우트는 `app/`이 아니라 **`src/app/`**이다. SDK 57 템플릿의 구조다.
 - **자동화 테스트를 작성하지 않는다.** 스펙의 결정이다 (`## 테스트` 절 참조). 각 태스크는 테스트 코드 대신 **명시적 수동 검증 단계**로 끝난다. 검증 단계를 건너뛰지 말 것.
 
@@ -89,7 +89,6 @@ src/
   components/
     StatusBadge.tsx    빌드 상태 배지 (순수 표현)
     BuildCard.tsx      목록 한 줄 (순수 표현)
-    ui/                react-native-reusables가 복사해 넣는 컴포넌트
   lib/
     types.ts           Build, BuildStatus 타입
     mock.ts            mock 빌드 데이터
@@ -682,162 +681,222 @@ git commit -m "feat: 알림 포그라운드 표시 및 탭 라우팅 구현"
 
 ---
 
-## Task 4: NativeWind와 react-native-reusables 설정
+## Task 4: NativeWind v5 (Tailwind CSS v4) 설정
 
 **Files:**
-- Create: `tailwind.config.js`, `metro.config.js`, `babel.config.js`, `nativewind-env.d.ts`
-- Modify: `src/global.css` (템플릿이 이미 생성해 둔 파일), `src/app/_layout.tsx`
+- Create: `metro.config.js`, `postcss.config.mjs`
+- Modify: `src/global.css`, `package.json` (overrides), `src/app/_layout.tsx`, `src/app/index.tsx`, `src/app/build/[id].tsx`
 
 **Interfaces:**
 - Consumes: 없음
-- Produces: 모든 컴포넌트에서 `className="..."` 사용 가능
+- Produces: 모든 react-native 컴포넌트에서 `className="..."` 사용 가능
 
-템플릿에는 `metro.config.js`와 `babel.config.js`가 없다. Expo 기본값을 쓰기 때문이다. NativeWind가 이 둘을 요구하므로 새로 만든다. 반면 `src/global.css`는 이미 존재하며 CSS 변수만 들어 있다 — 지우지 말고 Tailwind 지시자를 앞에 추가한다.
+### 계획 변경 — react-native-reusables를 채택하지 않는다
 
-- [ ] **Step 1: react-native-reusables CLI로 초기화 시도**
+당초 NativeWind v4 + react-native-reusables로 계획했으나 실제 환경 확인 후 변경했다.
+
+| | 확인된 사실 |
+|---|---|
+| 프로젝트 | RN 0.86.2, React 19.2.3 |
+| NativeWind stable | 4.2.6 |
+| NativeWind preview | 5.0.0-preview.4 |
+| Expo 공식 스킬(`expo-tailwind-setup`) | **v5 preview + Tailwind v4를 지시** |
+
+Expo 자신의 스킬이 이 SDK에서 v5를 지시한다는 것은 v4가 문제를 일으킬 가능성이 높다는 신호다. 그리고 react-native-reusables 0.7.1은 NativeWind v4 방식(일반 RN 컴포넌트에 `className` 직접 사용)으로 작성되어 v5 설정과 충돌한다.
+
+화면이 2개인 앱에서 UI 라이브러리가 주는 이득보다 버전 충돌을 디버깅하는 비용이 크다고 판단해 NativeWind만 쓴다.
+
+### 스킬 문서와 다른 점
+
+`expo-tailwind-setup` 스킬은 일부가 낡았다. 실제로 확인한 내용을 기준으로 한다.
+
+| 스킬 내용 | 실제 |
+|---|---|
+| `react-native-css@0.0.0-nightly.5ce6396` | nativewind 5.0.0-preview.4의 peer는 **`react-native-css@^3.0.1`** (현재 3.0.7) |
+| `src/tw/`에 `useCssElement` 래퍼 150여 줄 작성 | **불필요.** `react-native-css/components`가 View·Text·ScrollView·FlatList 등을 이미 래핑해 제공하며, `globalClassNamePolyfill` 기본값이 `true`라 일반 RN 컴포넌트에 `className`을 바로 쓸 수 있다 |
+| `globalClassNamePolyfill: false` | **지정하지 않는다.** 기본값 `true`가 훨씬 단순하다 |
+| `resolutions` 필드로 lightningcss 고정 | npm은 `resolutions`를 무시한다. **`overrides`**를 써야 한다 |
+| 버전 1.30.1 고정 | **이 부분은 맞다.** 아래 참조 |
+
+- [ ] **Step 1: 패키지 설치**
 
 ```bash
 cd C:/Users/SSAFY/Desktop/notification/mobile
-npx @react-native-reusables/cli@latest init
+npx expo install tailwindcss@^4 nativewind@5.0.0-preview.4 react-native-css@^3.0.1 @tailwindcss/postcss
 ```
 
-이 CLI는 shadcn/ui와 같은 방식으로 동작한다 — **패키지를 의존성으로 추가하는 게 아니라, 컴포넌트 소스 코드를 내 프로젝트에 복사해 넣는다.** 그래서 나중에 자유롭게 고칠 수 있다. `init`은 그 준비 작업(설정 파일 생성, 유틸 함수 추가)을 한다.
+`react-native-reanimated`, `react-native-safe-area-context`는 템플릿에 이미 있다. `autoprefixer`는 Expo가 lightningcss를 쓰므로 필요 없고, `postcss` 자체도 Expo에 포함되어 있다.
 
-이 CLI가 NativeWind 설정을 대신 해주는 경우가 많다. **CLI가 설정을 마쳤다면 Step 2~6을 건너뛰고 Step 7로 간다.** CLI가 없거나 실패하면 Step 2부터 수동으로 진행한다.
+- [ ] **Step 2: 🚩 lightningcss 버전 고정 — 이 단계를 빠뜨리면 번들링이 실패한다**
 
-⚠️ CLI가 `src/` 구조를 인식하지 못하고 루트에 `components/`, `lib/`를 만들 수 있다. 그런 경우 생성된 파일을 `src/` 아래로 옮기고 import를 `@/`로 고친다.
+`package.json`에 `overrides`를 추가한다.
 
-NativeWind 설정 파일 형식은 버전마다 바뀐다. 아래는 검증용 체크리스트로 쓰고, 충돌이 나면 https://www.nativewind.dev/docs/getting-started/installation 의 현재 문서를 우선한다.
-
-- [ ] **Step 2: 패키지 설치**
+```json
+"overrides": {
+  "lightningcss": "1.30.1"
+}
+```
 
 ```bash
-npx expo install nativewind tailwindcss
+npm install
+npm ls lightningcss --depth=3   # 모든 항목이 1.30.1 인지 확인
 ```
 
-`tailwindcss`는 클래스 이름을 해석하는 엔진이고, `nativewind`는 그 결과를 **React Native의 `StyleSheet` 객체로 변환**하는 어댑터다. RN에는 CSS가 없으므로 이 변환이 필요하다. 둘 다 빌드 타임에만 동작하는 순수 JS 패키지라 **네이티브 재빌드가 필요 없다.**
+**왜 필요한가:** lightningcss는 Rust 바이너리이고 `@tailwindcss/postcss`, `@expo/metro-config`, `react-native-css` 셋이 각자 사용한다. 버전이 어긋나면 AST를 주고받는 지점에서 serde 스키마가 맞지 않아 다음 에러로 죽는다.
 
-`react-native-reanimated`와 `react-native-safe-area-context`는 템플릿에 이미 포함되어 있다.
+```
+SyntaxError: src\global.css: failed to deserialize;
+expected an object-like struct named Specifier, found ()
+```
 
-- [ ] **Step 3: `tailwind.config.js` 생성**
+**왜 1.30.1인가:** `react-native-css@3.0.7`의 `devDependencies`가 `lightningcss: ^1.30.1`이다. 즉 이 버전으로 개발·테스트됐다. 캐럿 범위상 1.33.0도 허용되지만 **1.33.0으로 통일해도 같은 에러가 난다.** 실제로 확인했다. 최신 버전이 아니라 개발 기준 버전을 써야 한다.
 
-`content`가 `src/`를 가리켜야 한다. 여기가 틀리면 클래스가 조용히 무시된다.
+이 에러는 CSS 내용과 무관하다. `@import "tailwindcss";` 한 줄만 있어도 발생하고, `@import`가 없는 평범한 CSS는 통과하므로 "내 CSS가 틀렸나" 하고 헤매게 된다.
+
+- [ ] **Step 3: `metro.config.js` 생성**
 
 ```js
-/** @type {import('tailwindcss').Config} */
-module.exports = {
-  content: ["./src/**/*.{js,jsx,ts,tsx}"],
-  presets: [require("nativewind/preset")],
-  theme: { extend: {} },
-  plugins: [],
-}
+const { getDefaultConfig } = require('expo/metro-config');
+const { withNativewind } = require('nativewind/metro');
+
+const config = getDefaultConfig(__dirname);
+
+module.exports = withNativewind(config, {
+  inlineVariables: false,
+});
 ```
 
-- [ ] **Step 4: `src/global.css` 수정**
+- 함수명은 **`withNativewind`** (소문자 w). `withNativeWind`는 deprecated다.
+- v4의 `{ input: './global.css' }` 옵션은 **없다.** CSS 파일은 앱에서 직접 import하고 Metro가 `.css` import를 변환한다.
+- `globalClassNamePolyfill`을 지정하지 않으면 기본값 `true`가 적용되어 일반 RN 컴포넌트에 `className`을 쓸 수 있다.
 
-이 파일은 이미 존재하며 폰트 관련 CSS 변수가 들어 있다. **기존 내용을 지우지 말고** 맨 위에 Tailwind 지시자를 추가한다.
+- [ ] **Step 4: `postcss.config.mjs` 생성**
+
+```js
+export default {
+  plugins: {
+    '@tailwindcss/postcss': {},
+  },
+};
+```
+
+Tailwind v4는 PostCSS 플러그인이 `tailwindcss`에서 `@tailwindcss/postcss`로 분리되었다. Expo는 프로젝트 루트의 `postcss.config.mjs` / `.js` / `.json`을 인식한다.
+
+- [ ] **Step 5: `src/global.css` 작성**
+
+템플릿이 만들어둔 파일을 교체한다.
 
 ```css
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@import "nativewind/theme";
 
-:root {
-  /* 기존 --font-* 변수들을 그대로 둔다 */
+@media android {
+  :root {
+    --font-sans: normal;
+    --font-mono: monospace;
+    --font-serif: serif;
+  }
 }
-```
 
-- [ ] **Step 5: `babel.config.js`와 `metro.config.js` 수정**
-
-```js
-// babel.config.js
-module.exports = function (api) {
-  api.cache(true)
-  return {
-    presets: [
-      ["babel-preset-expo", { jsxImportSource: "nativewind" }],
-      "nativewind/babel",
-    ],
+@media ios {
+  :root {
+    --font-sans: system-ui;
+    --font-mono: ui-monospace;
+    --font-serif: ui-serif;
   }
 }
 ```
 
-```js
-// metro.config.js
-const { getDefaultConfig } = require("expo/metro-config")
-const { withNativeWind } = require("nativewind/metro")
+- v3의 `@tailwind base/components/utilities` 지시자는 v4에 없다. `@import "tailwindcss"` 한 줄이 대체한다.
+- `nativewind/theme`에 **`.css` 확장자를 붙이면 안 된다.** nativewind의 exports가 `"./theme": "./theme.css"`로 매핑하므로 `nativewind/theme.css`는 다음 에러가 난다.
 
-const config = getDefaultConfig(__dirname)
+  ```
+  "./theme.css" is not exported under the condition "style" from package nativewind
+  ```
 
-module.exports = withNativeWind(config, { input: "./src/global.css" })
-```
+- 테마 커스터마이징은 `tailwind.config.js`가 아니라 이 파일의 `@theme` 블록에 쓴다. **v4는 JS 설정 파일이 필요 없다.**
+- `@media android` / `@media ios`는 react-native-css 확장이다.
 
-경로가 `./global.css`가 아니라 **`./src/global.css`**다.
+- [ ] **Step 6: `src/app/_layout.tsx`에 CSS 로드**
 
-- [ ] **Step 6: 타입 선언과 CSS 로드**
-
-```ts
-// nativewind-env.d.ts
-/// <reference types="nativewind/types" />
-```
-
-`src/app/_layout.tsx` 최상단에 추가한다. `src/app/`에서 `src/global.css`로 가는 상대 경로다.
+파일 최상단에 추가한다. 앱 진입점에서 한 번만 import하면 전역에 적용된다.
 
 ```tsx
-import "../global.css"
+import '../global.css';
 ```
 
-- [ ] **Step 7: 경로 별칭 확인**
+- [ ] **Step 7: 🚩 검증 — 실기기 없이 번들링으로 확인**
 
-`tsconfig.json`에 이미 다음이 설정되어 있다. 수정할 것이 없고, 값이 맞는지만 확인한다.
+`npx expo start`는 에러를 즉시 보여주지 않을 수 있다. 전체 번들을 만들어 확인한다.
 
-```json
-"paths": {
-  "@/*": ["./src/*"],
-  "@/assets/*": ["./assets/*"]
-}
+```bash
+npx expo export --platform android --output-dir ../../tmp-export
 ```
 
-- [ ] **Step 8: 🚩 검증 — Tailwind 클래스가 먹는지 확인**
+성공하면 `android bundles (1): ... .hbc` 가 출력된다. 실패하면 CSS 파이프라인 문제이므로 Step 2를 먼저 확인한다.
 
-`src/app/build/[id].tsx`의 바깥 `View`를 임시로 바꾼다:
+번들에 클래스가 실제로 들어갔는지도 확인할 수 있다.
+
+```bash
+node -e "
+const fs=require('fs'),path=require('path');
+const dir='../../tmp-export/_expo/static/js/android';
+const s=fs.readFileSync(path.join(dir,fs.readdirSync(dir)[0]),'latin1');
+for(const c of ['bg-blue-50','rounded-lg','flex-1'])console.log(c, s.includes(c)?'있음':'없음');
+"
+```
+
+확인 후 `tmp-export` 폴더는 삭제한다.
+
+- [ ] **Step 8: 화면을 className으로 전환**
+
+`src/app/index.tsx`와 `src/app/build/[id].tsx`의 인라인 `style`을 `className`으로 바꾼다.
+
+⚠️ **`ScrollView`의 `contentContainerClassName`은 전역 타입 확장에 없다.** `react-native-css/components`의 `ScrollView`만 지원한다. import 경로를 바꾸지 않으려면 안쪽에 `View`를 두고 여백을 준다.
 
 ```tsx
-<View className="flex-1 items-center justify-center bg-blue-500">
+<ScrollView className="flex-1 bg-white">
+  <View className="gap-4 p-6">
+    ...
+  </View>
+</ScrollView>
 ```
 
-캐시를 비우고 재시작한다:
+- [ ] **Step 9: 타입 체크**
+
+```bash
+npx tsc --noEmit
+```
+
+`className`은 전역 타입 확장으로 통과한다. 에러가 나면 지원되지 않는 prop(위 `contentContainerClassName` 등)을 쓴 것이다.
+
+- [ ] **Step 10: 🚩 검증 — 실기기에서 스타일 적용 확인**
+
+설정 파일을 새로 만들었으므로 **캐시를 비워야 한다.**
 
 ```bash
 npx expo start --dev-client --clear
 ```
 
-`--clear`가 핵심이다. Metro는 변환 결과를 캐시해두는데, 방금 만든 `metro.config.js`·`babel.config.js`·`tailwind.config.js`는 **캐시를 비우지 않으면 반영되지 않는다.** 이걸 빠뜨리면 설정이 맞는데도 클래스가 안 먹혀서 원인을 엉뚱한 데서 찾게 된다.
+`--clear` 없이는 Metro가 이전 변환 결과를 재사용해 설정이 반영되지 않는다. 설정이 맞는데도 클래스가 안 먹히는 것처럼 보여 원인을 엉뚱한 곳에서 찾게 된다.
 
-상세 화면 배경이 파란색이 되고 내용이 가운데 정렬되면 성공이다. **안 되면 다음 태스크로 넘어가지 말 것** — 이후 모든 UI가 이 설정에 의존한다.
+폰에서 확인할 것:
+- 배경이 흰색, 제목이 굵고 크게
+- 토큰 박스가 회색 배경 + 둥근 모서리
+- 안내 박스가 연한 파란 배경
+- 상세 화면 텍스트 크기·색상 적용
 
-확인 후 임시 `className`은 되돌린다.
+네이티브 재빌드는 필요 없다. NativeWind와 Tailwind는 순수 JS다.
 
-- [ ] **Step 9: UI 컴포넌트 추가**
-
-```bash
-npx @react-native-reusables/cli@latest add text button card
-```
-
-`add`는 지정한 컴포넌트의 **소스 파일을 내 프로젝트에 복사**한다. 설치가 아니라 복사라서, 복사된 파일은 내 코드이고 마음대로 수정해도 된다.
-
-`src/components/ui/` 아래에 파일이 생성된다 (루트에 생겼다면 `src/` 아래로 옮긴다). CLI가 다른 이름을 요구하면 `npx @react-native-reusables/cli@latest add` 를 인자 없이 실행해 사용 가능한 목록을 확인한다.
-
-- [ ] **Step 10: 커밋**
+- [ ] **Step 11: 커밋**
 
 ```bash
 cd C:/Users/SSAFY/Desktop/notification
 git add -A
-git commit -m "chore: NativeWind 및 react-native-reusables 설정"
+git commit -m "chore: NativeWind v5 (Tailwind CSS v4) 설정"
 ```
 
 ---
-
 ## Task 5: 타입, mock 데이터, API 계층
 
 Task 1의 클라우드 빌드를 기다리는 동안 병행 가능한 유일한 태스크다.

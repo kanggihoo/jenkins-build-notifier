@@ -4,15 +4,15 @@
 
 ## 지금 어디까지 왔나
 
-**Phase 1(모바일) 8개 태스크 중 3개 완료.** 이 프로젝트에서 가장 불확실했던 부분 — 앱이 종료된 상태에서 푸시 알림이 도착하고, 탭하면 해당 화면으로 이동하는지 — 를 실기기에서 검증했다. 남은 작업은 평범한 UI 구현이다.
+**Phase 1(모바일) 8개 태스크 중 4개 완료.** 이 프로젝트에서 가장 불확실했던 부분 — 앱이 종료된 상태에서 푸시 알림이 도착하고, 탭하면 해당 화면으로 이동하는지 — 를 실기기에서 검증했다. 남은 작업은 평범한 UI 구현이다.
 
 | Task | 내용 | 상태 |
 |---|---|---|
 | 1 | 프로젝트 생성, EAS 등록, Firebase, Development Build | ✅ 완료 |
 | 2 | 푸시 권한·채널·토큰 발급, 실기기 수신 검증 | ✅ 완료 |
 | 3 | 포그라운드 핸들러, 알림 탭 → 상세 라우팅 | ✅ 완료 |
-| 4 | NativeWind + react-native-reusables | ⬜ 다음 |
-| 5 | 타입, mock 데이터, API 계층 | ⬜ |
+| 4 | NativeWind v5 + Tailwind CSS v4 설정 | ✅ 완료 |
+| 5 | 타입, mock 데이터, API 계층 | ⬜ 다음 |
 | 6 | 빌드 목록 화면 | ⬜ |
 | 7 | 빌드 상세 화면 | ⬜ |
 | 8 | README, 환경변수 예시 | ⬜ (일부 선행 완료) |
@@ -38,21 +38,21 @@ mobile/src/
     build/[id].tsx   라우팅 검증용 임시 화면 (Task 7에서 실제 상세로 교체)
   lib/
     push.ts          권한, builds 채널, 토큰 발급
-  global.css         Task 4에서 Tailwind 지시자 추가
+  global.css         Tailwind + nativewind/theme import
 ```
+
+설정 파일: `metro.config.js`(withNativewind), `postcss.config.mjs`(@tailwindcss/postcss), `package.json`의 `overrides.lightningcss`. `tailwind.config.js`와 `babel.config.js`는 **없다** — Tailwind v4는 CSS-first 설정이다.
 
 ## 다음 할 일
 
-### Task 4~7
+### Task 5~7
 
 계획서에 코드가 전부 들어 있다. 순서대로 진행하면 된다.
 
 주의할 지점:
 
-- **Task 4 착수 전에 `expo-tailwind-setup` 스킬을 확인해야 한다.** 이 저장소의 스킬 설명이 "Tailwind CSS v4 + react-native-css + NativeWind v5"를 가리키는데, 계획서는 NativeWind v4 기준으로 작성됐다. 설정 파일 형식이 다를 수 있다
-- `tailwind.config.js`의 `content`는 `./src/**`를 가리켜야 한다. 틀리면 클래스가 조용히 무시된다
-- Task 4 이후에는 `npx expo start --dev-client --clear`로 캐시를 비워야 설정이 반영된다
-- Task 4~7에서 추가하는 패키지는 모두 순수 JS다. **네이티브 재빌드가 필요 없다**
+- Task 5~7에서 추가하는 패키지(`@tanstack/react-query`, `date-fns`)는 모두 순수 JS다. **네이티브 재빌드가 필요 없다**
+- 계획서 Task 6·7의 코드는 `react-native-reusables`를 전제하지 않는다. RN 기본 컴포넌트 + NativeWind로 작성되어 있다
 
 ### Phase 2 — 백엔드
 
@@ -120,6 +120,26 @@ router.push({ pathname: '/build/[id]', params: { id: buildId } })
 ```
 
 `pathname`에는 실제 값이 아니라 **라우트 패턴 그대로**(`/build/[id]`) 넣는다.
+
+**NativeWind v5는 lightningcss를 1.30.1로 고정해야 한다**
+`@tailwindcss/postcss`, `@expo/metro-config`, `react-native-css` 셋이 각자 lightningcss(Rust 바이너리)를 쓴다. 버전이 어긋나면 AST를 주고받는 지점에서 다음 에러로 번들링이 실패한다.
+
+```
+failed to deserialize; expected an object-like struct named Specifier, found ()
+```
+
+**최신 버전으로 통일해도 해결되지 않는다.** 1.33.0으로 맞춰도 같은 에러가 났고, `react-native-css@3.0.7`의 devDependency인 **1.30.1**로 내려야 통과했다. npm은 yarn의 `resolutions`를 무시하므로 `overrides`를 써야 한다.
+
+이 에러는 CSS 내용과 무관하다. `@import`가 없는 평범한 CSS는 통과하므로 "내 CSS가 틀렸나" 하고 헤매게 된다.
+
+**`nativewind/theme.css`가 아니라 `nativewind/theme`**
+exports가 `"./theme": "./theme.css"`로 매핑되어 있어 확장자를 붙이면 `is not exported under the condition "style"` 에러가 난다.
+
+**Expo 공식 스킬도 낡을 수 있다**
+`expo-tailwind-setup` 스킬은 `react-native-css` nightly 버전과 `src/tw/` 래퍼 150여 줄을 지시하는데, 실제로는 `react-native-css@^3.0.1`이 필요하고 래퍼는 불필요하다 (`globalClassNamePolyfill` 기본값이 `true`이고, `react-native-css/components`가 이미 래핑된 컴포넌트를 제공한다). 반면 lightningcss 고정은 스킬이 맞았다. 지시를 그대로 따르기보다 `npm view`로 실제 의존성을 확인해야 한다.
+
+**실기기 없이 CSS 파이프라인을 검증할 수 있다**
+`npx expo start`는 CSS 에러를 늦게 드러낸다. `npx expo export --platform android`로 전체 번들을 만들면 즉시 확인되고, 생성된 `.hbc`에서 클래스 문자열을 grep해 실제 컴파일 여부까지 볼 수 있다.
 
 **네이티브 모듈은 빌드 전에 모두 설치해야 한다**
 `expo-notifications`, `expo-clipboard`는 APK에 컴파일돼 들어가므로 나중에 추가하면 재빌드가 필요하다. JS 코드 수정과 순수 JS 패키지 추가는 재빌드가 필요 없다.

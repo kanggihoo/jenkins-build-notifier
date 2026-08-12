@@ -125,8 +125,8 @@ type Build = {
 | 언어 | TypeScript |
 | 프레임워크 | Expo |
 | 라우팅 | Expo Router (파일 기반) |
-| 스타일 | NativeWind (Tailwind 문법) |
-| UI 컴포넌트 | react-native-reusables (shadcn RN 포팅, 컴포넌트를 프로젝트로 복사) |
+| 스타일 | NativeWind v5 + Tailwind CSS v4 |
+| UI 컴포넌트 | 없음 (RN 기본 컴포넌트 + NativeWind) |
 | 서버 상태 | TanStack Query |
 | 로컬 저장 | **없음** |
 | 푸시 | expo-notifications, expo-device, expo-constants |
@@ -142,6 +142,16 @@ RN에서 가장 잘 깨지는 지점은 Metro 번들러의 네이티브 모듈 �
 NativeWind는 소수 인원이 유지하는 프로젝트이며 회사의 후원을 받지 않는다. 이는 실재하는 리스크다.
 
 채택하는 이유는 "RN에서 Tailwind 문법"이라는 카테고리에 사실상 대안이 없고, 락인이 얕기 때문이다. NativeWind는 빌드 타임에 Tailwind 클래스를 RN 기본 `StyleSheet` 객체로 변환할 뿐 런타임 추상화 계층을 만들지 않는다. 프로젝트가 중단되어도 결과물은 평범한 RN 스타일이므로 이탈 비용이 제한적이다.
+
+**버전은 v5 preview를 쓴다.** stable은 4.2.6이지만 Expo가 이 SDK(57, RN 0.86)용으로 제공하는 공식 스킬이 v5 preview + Tailwind CSS v4를 지시한다. 프레임워크 제공자가 자기 SDK에 대해 권하는 조합을 따르는 편이, stable 딱지를 이유로 v4를 쓰고 호환성 문제를 디버깅하는 것보다 낫다고 판단했다.
+
+대가로 pre-release 의존성과 `lightningcss` 버전 고정이 필요해졌다. 상세는 구현 계획서 Task 4에 있다.
+
+### UI 컴포넌트 라이브러리를 채택하지 않은 이유
+
+당초 react-native-reusables(shadcn/ui의 RN 포팅)를 선택했으나 철회했다. 0.7.1이 NativeWind v4 방식으로 작성되어 v5 설정과 충돌한다.
+
+화면이 2개인 앱에서 UI 라이브러리가 주는 이득보다 버전 충돌을 디버깅하는 비용이 크다. RN 기본 컴포넌트 + NativeWind로 충분하며, 상태 배지처럼 필요한 것은 직접 만든다.
 
 ### 채택하지 않은 것
 

@@ -1,9 +1,36 @@
-:root {
-  --font-display:
-    Spline Sans, Inter, ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji,
-    Segoe UI Symbol, Noto Color Emoji;
-  --font-mono:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
-  --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
-  --font-serif: Georgia, 'Times New Roman', serif;
+/*
+ * Tailwind CSS v4 + NativeWind v5
+ *
+ * v3의 `@tailwind base/components/utilities` 지시자는 v4에서 사라졌다.
+ * `@import "tailwindcss"` 한 줄이 그 셋을 대체한다.
+ *
+ * `nativewind/theme`는 NativeWind의 Tailwind 플러그인과 elevation·safe-area
+ * 유틸리티를 등록한다. 이 import가 없으면 NativeWind 전용 클래스가 동작하지 않는다.
+ *
+ * 경로에 `.css` 확장자를 붙이면 안 된다. nativewind의 package.json exports가
+ * `"./theme": "./theme.css"` 로 매핑하므로 `nativewind/theme.css`는 해석되지 않고
+ * 다음 에러가 난다:
+ *   "./theme.css" is not exported under the condition "style" from package nativewind
+ *
+ * 테마 커스터마이징은 tailwind.config.js가 아니라 여기 `@theme` 블록에 작성한다.
+ * v4는 CSS-first 설정이라 JS 설정 파일이 필요 없다.
+ */
+@import "tailwindcss";
+@import "nativewind/theme";
+
+/* 플랫폼별 폰트 패밀리. @media android / @media ios 는 react-native-css 확장이다. */
+@media android {
+  :root {
+    --font-sans: normal;
+    --font-mono: monospace;
+    --font-serif: serif;
+  }
+}
+
+@media ios {
+  :root {
+    --font-sans: system-ui;
+    --font-mono: ui-monospace;
+    --font-serif: ui-serif;
+  }
 }

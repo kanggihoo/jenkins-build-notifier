@@ -1,3 +1,7 @@
+// Tailwind 스타일시트 로드. Metro가 이 import를 변환한다 (metro.config.js 참조).
+// 앱 진입점에서 한 번만 import하면 전역에 적용된다.
+import '../global.css';
+
 import * as Notifications from 'expo-notifications';
 import { router } from 'expo-router';
 import { Stack } from 'expo-router/stack';
@@ -10,9 +14,9 @@ import { useEffect } from 'react';
  * - Expo Router 기반의 전체 앱 내비게이션 트리 최상단 컴포넌트
  * - Stack 내비게이터를 사용해 각 화면(index, build/[id]) 간 카드 전환/헤더 제공
  * - 앱 전역에 한 번만 필요한 알림 설정을 여기서 수행 (Task 3)
+ * - 전역 Tailwind 스타일시트 로드 (Task 4)
  *
  * [남은 작업]
- * - Task 4: 전역 CSS (`src/global.css`) 로드
  * - Task 6: TanStack Query Provider로 트리 감싸기
  */
 

@@ -30,7 +30,7 @@ Jenkins ──빌드 완료 시 POST──> 백엔드 ──> Expo Push ──> 
 | 역할 | 선택 |
 |---|---|
 | 앱 | TypeScript, Expo SDK 57, Expo Router |
-| 스타일 | NativeWind, react-native-reusables |
+| 스타일 | NativeWind v5 + Tailwind CSS v4 |
 | 서버 상태 | TanStack Query |
 | 푸시 | expo-notifications → Expo Push Service → FCM |
 | 빌드 | EAS Build (클라우드) |
